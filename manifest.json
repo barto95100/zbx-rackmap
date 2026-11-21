@@ -1,0 +1,31 @@
+{
+	"manifest_version": 2.0,
+	"id": "rackmap",
+	"name": "Rackmap",
+	"version": "0.5.0",
+	"namespace": "Rackmap",
+	"author": "barto95100",
+	"description": "Rack/cabinet view: devices by U position, live status from linked Zabbix hosts and cabling between devices.",
+	"actions": {
+		"rackmap.view": {
+			"class": "RackmapView",
+			"view": "rackmap.view"
+		},
+		"rackmap.data": {
+			"class": "RackmapData",
+			"layout": "layout.json"
+		},
+		"rackmap.save": {
+			"class": "RackmapSave",
+			"layout": "layout.json"
+		},
+		"rackmap.hosts": {
+			"class": "RackmapHosts",
+			"layout": "layout.json"
+		},
+		"rackmap.host": {
+			"class": "RackmapHost",
+			"layout": "layout.json"
+		}
+	}
+}
