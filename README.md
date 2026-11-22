@@ -8,6 +8,8 @@ Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans l
 - Clic sur un équipement : panneau latéral façon Cablemap (métriques, graphiques, problèmes, interfaces, liens vers Zabbix) + toutes ses connexions ; les équipements reliés ressortent, les autres s'estompent.
 - Câbles partant de vrais ports ; animation selon le débit (items `net.if.in[...]` / `net.if.out[...]`), sens A→B et B→A, vitesse proportionnelle (échelle 1 Gb/s).
 - Éditeur visuel intégré : ajout/déplacement (glisser-déposer à l'U), hôte associé, câbles tracés à la souris (port puis port) ou par formulaire, interface Zabbix optionnelle par extrémité.
+- Plusieurs baies : datacenter par baie, choix du datacenter et des baies à afficher côte à côte, câbles entre baies.
+- Zoom (ajuster à la fenêtre / 50–150 %) et export PNG.
 - Tables SQL dédiées (`rackmap_*`), PostgreSQL et MySQL/MariaDB.
 
 ## Installation
@@ -20,6 +22,7 @@ Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans l
 3. Administration → Général → Modules → Scan directory → activer « Rackmap ». Menu : Surveillance → Rackmap.
 
 ## Mise à niveau
+- 0.5 → 0.6 : `sql/upgrade-0.6.postgresql.sql` ou `sql/upgrade-0.6.mysql.sql` (colonne `site`, datacenter).
 - 0.3 → 0.4+ : `sql/upgrade-0.4.postgresql.sql` ou `sql/upgrade-0.4.mysql.sql` (colonnes `a_iface`/`b_iface`). Sans elles, le module fonctionne mais sans le champ « Interface ».
 
 ## Animation du trafic
