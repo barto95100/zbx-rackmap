@@ -1,41 +1,43 @@
 # Rackmap
 
-Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans la réalité — équipements placés à l'U, statut en direct des hôtes Zabbix associés, câblage entre les ports et trafic animé.
+🇬🇧 English · 🇫🇷 [Français](README.fr.md)
+
+**Zabbix 8.0** frontend module: visualize your IT racks the way they look in real life — devices placed per U, live status of the linked Zabbix hosts, cabling between ports and animated traffic.
 
 ![Rackmap](docs/screenshot-rack.png)
 
-## Fonctionnalités
-- Baie réaliste (montants, rails, équipements 1U/2U… par type : serveur, switch, routeur, pare-feu, patch, PDU, onduleur, NAS), équipements pleine largeur ou demi-largeur.
-- Faces avant détaillées : ports RJ45 et SFP (plusieurs groupes de vitesse), baies disques horizontales ou verticales.
-- Numérotation des U par baie : de bas en haut ou de haut en bas.
-- Couleur et voyant selon l'état de l'hôte associé (OK, problème par sévérité, injoignable, désactivé, passif).
-- Clic sur un équipement : panneau latéral façon Cablemap (métriques, graphiques, problèmes, interfaces, liens vers Zabbix) + toutes ses connexions ; les équipements reliés ressortent, les autres s'estompent.
-- Câbles partant de vrais ports ; animation selon le débit (items `net.if.in[...]` / `net.if.out[...]`), sens A→B et B→A, vitesse proportionnelle (échelle 1 Gb/s).
-- Éditeur visuel intégré : ajout/déplacement (glisser-déposer à l'U), hôte associé, câbles tracés à la souris (port puis port) ou par formulaire, interface Zabbix optionnelle par extrémité.
-- Plusieurs baies : datacenter par baie, choix du datacenter et des baies à afficher côte à côte, câbles entre baies.
-- Zoom (ajuster à la fenêtre / 50–150 %) et export PNG.
-- Tables SQL dédiées (`rackmap_*`), PostgreSQL et MySQL/MariaDB.
+## Features
+- Realistic rack (rails, posts, 1U/2U… devices by type: server, switch, router, firewall, patch panel, PDU, UPS, NAS), full-width or half-width devices.
+- Detailed front faces: RJ45 and SFP ports (several speed groups), horizontal or vertical drive bays.
+- Per-rack U numbering: bottom-to-top or top-to-bottom.
+- Color and LED according to the linked host status (OK, problem by severity, unreachable, disabled, passive).
+- Click a device: Cablemap-style side panel (metrics, graphs, problems, interfaces, links to Zabbix) plus all its connections; connected devices stand out, the others fade.
+- Cables drawn from real ports; animation based on throughput (`net.if.in[...]` / `net.if.out[...]` items), A→B and B→A directions, speed proportional to the rate (1 Gb/s scale).
+- Built-in visual editor: add/move devices (drag and drop per U), linked host, cables drawn with the mouse (click a port, then another) or via a form, optional Zabbix interface per end.
+- Multiple racks: datacenter per rack, choose which datacenter and racks to display side by side, cables between racks.
+- Zoom (fit to window / 50–150 %) and PNG export.
+- Dedicated SQL tables (`rackmap_*`), PostgreSQL and MySQL/MariaDB.
 
 ## Installation
-1. Tables (une fois) :
-   - PostgreSQL : `sudo -u postgres psql zabbix -f sql/schema.postgresql.sql`
-   - MySQL/MariaDB : `mysql -u root -p zabbix < sql/schema.mysql.sql`
-   - Démo facultative : `sql/demo.postgresql.sql` ou `sql/demo.mysql.sql`
-   - Si le frontend utilise un autre utilisateur SQL : lui accorder SELECT/INSERT/UPDATE/DELETE sur les 3 tables (et USAGE/SELECT/UPDATE sur leurs séquences en PostgreSQL).
-2. Copier le dossier dans `<frontend>/modules/rackmap` (ou `./deploy.sh`, voir l'en-tête du script : `.deploy.env` avec `ZBX_HOST`).
-3. Administration → Général → Modules → Scan directory → activer « Rackmap ». Menu : Surveillance → Rackmap.
+1. Tables (once):
+   - PostgreSQL: `sudo -u postgres psql zabbix -f sql/schema.postgresql.sql`
+   - MySQL/MariaDB: `mysql -u root -p zabbix < sql/schema.mysql.sql`
+   - Optional demo: `sql/demo.postgresql.sql` or `sql/demo.mysql.sql`
+   - If the frontend uses a different SQL user: grant it SELECT/INSERT/UPDATE/DELETE on the 3 tables (and USAGE/SELECT/UPDATE on their sequences on PostgreSQL).
+2. Copy the folder to `<frontend>/modules/rackmap` (or `./deploy.sh`, see the script header: `.deploy.env` with `ZBX_HOST`).
+3. Administration → General → Modules → Scan directory → enable "Rackmap". Menu: Monitoring → Rackmap.
 
-## Mise à niveau
-- 0.9 → 0.10 : `sql/upgrade-0.10.postgresql.sql` ou `sql/upgrade-0.10.mysql.sql` (colonne `u_desc`, sens de numérotation des U).
-- 0.7 → 0.8 / 0.8 → 0.9 : `sql/upgrade-0.8.*.sql`, `sql/upgrade-0.9.*.sql` (SFP, demi-largeur, disques).
-- 0.5 → 0.6 : `sql/upgrade-0.6.postgresql.sql` ou `sql/upgrade-0.6.mysql.sql` (colonne `site`, datacenter).
-- 0.3 → 0.4+ : `sql/upgrade-0.4.postgresql.sql` ou `sql/upgrade-0.4.mysql.sql` (colonnes `a_iface`/`b_iface`). Sans elles, le module fonctionne mais sans le champ « Interface ».
+## Upgrading
+- 0.9 → 0.10: `sql/upgrade-0.10.postgresql.sql` or `sql/upgrade-0.10.mysql.sql` (`u_desc` column, U numbering direction).
+- 0.7 → 0.8 / 0.8 → 0.9: `sql/upgrade-0.8.*.sql`, `sql/upgrade-0.9.*.sql` (SFP, half width, drives).
+- 0.5 → 0.6: `sql/upgrade-0.6.postgresql.sql` or `sql/upgrade-0.6.mysql.sql` (`site` column, datacenter).
+- 0.3 → 0.4+: `sql/upgrade-0.4.postgresql.sql` or `sql/upgrade-0.4.mysql.sql` (`a_iface`/`b_iface` columns). Without them the module still works, but without the "Interface" field.
 
-## Animation du trafic
-Le port du câble (ex. `3`) ou le champ « Interface » est comparé aux paramètres des clés `net.if.in[...]`/`net.if.out[...]` de l'hôte lié (ex. `ifHCInOctets.3`, `eth0`). Aucun item correspondant : câble statique.
+## Traffic animation
+The cable port (e.g. `3`) or the "Interface" field is matched against the parameters of the linked host's `net.if.in[...]` / `net.if.out[...]` item keys (e.g. `ifHCInOctets.3`, `eth0`). No matching item: the cable stays static.
 
-## Droits
-Lecture : tout utilisateur pouvant ouvrir le module ; édition : Admin/Super admin.
+## Permissions
+Read: any user who can open the module; edit: Admin / Super admin.
 
-## Licence
-AGPL-3.0 — voir `LICENSE`.
+## License
+AGPL-3.0 — see `LICENSE`.
