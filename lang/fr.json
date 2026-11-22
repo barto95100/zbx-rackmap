@@ -102,7 +102,16 @@
 	"iface": "Interface",
 	"iface_hint": "Interface Zabbix (facultatif)",
 	"rate_none": "aucune donnée",
-	"mouse_hint": "Astuce : cliquez un port puis un autre port pour tracer un câble.",
+	"mouse_hint": "Astuce : glissez d'un port à un autre (ou cliquez un port puis l'autre) pour tracer un câble.",
 	"mouse_from": "Départ",
-	"mouse_to": "cliquez le port d'arrivée."
+	"mouse_to": "cliquez le port d'arrivée.",
+	"zoom": "Zoom",
+	"zoom_fit": "Ajuster à la fenêtre",
+	"export_png": "Exporter en PNG",
+	"datacenter": "Datacenter",
+	"all_dc": "Tous les datacenters",
+	"racks": "Baies",
+	"ports_rj45": "Ports RJ45",
+	"ports_sfp": "Ports SFP",
+	"sfp_speed": "Débit SFP"
 }

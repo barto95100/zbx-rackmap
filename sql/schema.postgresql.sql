@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS rackmap_rack (
 	rackid       bigserial PRIMARY KEY,
 	name         varchar(128) NOT NULL,
 	units        integer      NOT NULL DEFAULT 42,
-	description  varchar(255) NOT NULL DEFAULT ''
+	description  varchar(255) NOT NULL DEFAULT '',
+	site         varchar(128) NOT NULL DEFAULT ''   -- datacenter / site (regroupement des baies)
 );
 
 CREATE TABLE IF NOT EXISTS rackmap_device (
@@ -17,7 +18,9 @@ CREATE TABLE IF NOT EXISTS rackmap_device (
 	hostid    bigint       NULL,                        -- hôte Zabbix associé (NULL = équipement passif)
 	u_pos     integer      NOT NULL,                    -- U du bas de l'équipement (1 = bas de la baie)
 	u_height  integer      NOT NULL DEFAULT 1,
-	ports     integer      NOT NULL DEFAULT 0
+	ports     integer      NOT NULL DEFAULT 0,            -- ports RJ45
+	sfp_ports integer      NOT NULL DEFAULT 0,            -- ports SFP/QSFP
+	sfp_speed integer      NOT NULL DEFAULT 10            -- débit SFP en Gb/s (1, 10, 25, 40, 100, 200, 400)
 );
 CREATE INDEX IF NOT EXISTS rackmap_device_rack ON rackmap_device (rackid);
 
