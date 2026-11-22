@@ -2,8 +2,12 @@
 
 Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans la réalité — équipements placés à l'U, statut en direct des hôtes Zabbix associés, câblage entre les ports et trafic animé.
 
+![Rackmap](docs/screenshot-rack.png)
+
 ## Fonctionnalités
-- Baie réaliste (montants, rails, équipements 1U/2U… par type : serveur, switch, routeur, pare-feu, patch, PDU, onduleur, NAS).
+- Baie réaliste (montants, rails, équipements 1U/2U… par type : serveur, switch, routeur, pare-feu, patch, PDU, onduleur, NAS), équipements pleine largeur ou demi-largeur.
+- Faces avant détaillées : ports RJ45 et SFP (plusieurs groupes de vitesse), baies disques horizontales ou verticales.
+- Numérotation des U par baie : de bas en haut ou de haut en bas.
 - Couleur et voyant selon l'état de l'hôte associé (OK, problème par sévérité, injoignable, désactivé, passif).
 - Clic sur un équipement : panneau latéral façon Cablemap (métriques, graphiques, problèmes, interfaces, liens vers Zabbix) + toutes ses connexions ; les équipements reliés ressortent, les autres s'estompent.
 - Câbles partant de vrais ports ; animation selon le débit (items `net.if.in[...]` / `net.if.out[...]`), sens A→B et B→A, vitesse proportionnelle (échelle 1 Gb/s).
@@ -22,6 +26,8 @@ Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans l
 3. Administration → Général → Modules → Scan directory → activer « Rackmap ». Menu : Surveillance → Rackmap.
 
 ## Mise à niveau
+- 0.9 → 0.10 : `sql/upgrade-0.10.postgresql.sql` ou `sql/upgrade-0.10.mysql.sql` (colonne `u_desc`, sens de numérotation des U).
+- 0.7 → 0.8 / 0.8 → 0.9 : `sql/upgrade-0.8.*.sql`, `sql/upgrade-0.9.*.sql` (SFP, demi-largeur, disques).
 - 0.5 → 0.6 : `sql/upgrade-0.6.postgresql.sql` ou `sql/upgrade-0.6.mysql.sql` (colonne `site`, datacenter).
 - 0.3 → 0.4+ : `sql/upgrade-0.4.postgresql.sql` ou `sql/upgrade-0.4.mysql.sql` (colonnes `a_iface`/`b_iface`). Sans elles, le module fonctionne mais sans le champ « Interface ».
 
