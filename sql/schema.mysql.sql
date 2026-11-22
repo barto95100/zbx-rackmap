@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS rackmap_rack (
 	units        int NOT NULL DEFAULT 42,
 	description  varchar(255) NOT NULL DEFAULT '',
 	site         varchar(128) NOT NULL DEFAULT '',
+	u_desc       smallint NOT NULL DEFAULT 0,
 	PRIMARY KEY (rackid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -22,6 +23,10 @@ CREATE TABLE IF NOT EXISTS rackmap_device (
 	ports     int NOT NULL DEFAULT 0,
 	sfp_ports int NOT NULL DEFAULT 0,
 	sfp_speed int NOT NULL DEFAULT 10,
+	sfp_spec  varchar(128) NOT NULL DEFAULT '',
+	slot      smallint NOT NULL DEFAULT 0,
+	disks     smallint NOT NULL DEFAULT -1,
+	disk_orient smallint NOT NULL DEFAULT 0,
 	PRIMARY KEY (deviceid),
 	KEY rackmap_device_rack (rackid),
 	CONSTRAINT rackmap_device_rack_fk FOREIGN KEY (rackid) REFERENCES rackmap_rack (rackid) ON DELETE CASCADE

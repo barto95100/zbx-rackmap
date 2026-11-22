@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.0
+- Sens de numérotation des U par baie (de bas en haut ou de haut en bas).
+- Baies disques horizontales plus larges que hautes, verticales plus fines ; la position U n'est plus répétée sur la face des équipements.
+- Mise à niveau : `sql/upgrade-0.10.*.sql`.
+
+## 0.9.0
+- Nombre de disques configurable (serveurs, NAS) et disposition horizontale (3,5") ou verticale (2,5").
+- Mise à niveau : `sql/upgrade-0.9.*.sql`.
+
+## 0.8.0
+- Plusieurs groupes SFP (nombre + débit) par équipement, ex. 4×10G + 2×100G.
+- Équipements demi-largeur (gauche / droite) : deux petits serveurs côte à côte dans le même U.
+- Mise à niveau : `sql/upgrade-0.8.*.sql`.
+
 ## 0.7.0
 - Ports RJ45 + ports SFP (1/10/25/40/100/200/400 G, cages colorées par débit) ; les ports tiennent dans la face de l'équipement (48 ports, patch panels).
 - Mise à niveau : `sql/upgrade-0.7.*.sql`.

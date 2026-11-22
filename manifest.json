@@ -2,7 +2,7 @@
 	"manifest_version": 2.0,
 	"id": "rackmap",
 	"name": "Rackmap",
-	"version": "0.7.0",
+	"version": "0.10.0",
 	"namespace": "Rackmap",
 	"author": "barto95100",
 	"description": "Rack/cabinet view: devices by U position, live status from linked Zabbix hosts and cabling between devices.",

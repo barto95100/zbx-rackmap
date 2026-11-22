@@ -25,7 +25,7 @@
 		passive_note: 'Passive device (no Zabbix host linked).', error: 'Loading error', metric_names: {}, graph_nodata: 'No history',
 		severities: ['Not classified', 'Information', 'Warning', 'Average', 'High', 'Disaster'],
 		cable_view: 'Cables', cm_sel: 'Selected / hovered device', cm_all: 'All', cm_none: 'None',
-		cable_hint: 'Hover or click a device to see its cables.', conn_to: 'to', c_rj45: 'RJ45', c_fiber: 'Fiber', c_dac: 'DAC', c_power: 'Power', c_other: 'Other', new_device: 'New device', animate: 'Animate traffic', iface: 'Interface', iface_hint: 'Zabbix interface (optional)', rate_none: 'no data', mouse_hint: 'Tip: drag from a port to another port (or click one, then the other) to draw a cable.', mouse_from: 'From', mouse_to: 'click the destination port.', zoom: 'Zoom', zoom_fit: 'Fit to window', export_png: 'Export PNG', datacenter: 'Datacenter', ports_rj45: 'RJ45 ports', ports_sfp: 'SFP ports', sfp_speed: 'SFP speed', all_dc: 'All datacenters', racks: 'Racks'
+		cable_hint: 'Hover or click a device to see its cables.', conn_to: 'to', c_rj45: 'RJ45', c_fiber: 'Fiber', c_dac: 'DAC', c_power: 'Power', c_other: 'Other', new_device: 'New device', animate: 'Animate traffic', iface: 'Interface', iface_hint: 'Zabbix interface (optional)', rate_none: 'no data', mouse_hint: 'Tip: drag from a port to another port (or click one, then the other) to draw a cable.', mouse_from: 'From', mouse_to: 'click the destination port.', zoom: 'Zoom', zoom_fit: 'Fit to window', export_png: 'Export PNG', datacenter: 'Datacenter', ports_rj45: 'RJ45 ports', ports_sfp: 'SFP ports', sfp_speed: 'SFP speed', sfp_group: 'SFP group', width: 'Width', u_numbering: 'U numbering', u_bottom: 'Bottom to top (1 at the bottom)', u_top: 'Top to bottom (1 at the top)', disks: 'Drives', disk_orient: 'Drive layout', disk_h: 'Horizontal bays', disk_v: 'Vertical bays', w_full: 'Full width', w_left: 'Half - left', w_right: 'Half - right', all_dc: 'All datacenters', racks: 'Racks'
 	}, CFG.labels || {});
 
 	var UH = 36, RACK_X = 64, RACK_W = 460, TOP = 34, LANE = 16;
@@ -485,15 +485,27 @@
 
 	/* ---------- règles de placement ---------- */
 
-	function fits(rack, dev, pos, height) {
+	/** Largeur : 0 = pleine, 1 = demi gauche, 2 = demi droite. Deux équipements se gênent s'ils partagent un U et un côté. */
+	/** U physique (1 = bas de la baie) du bas d'un équipement, selon le sens de numérotation de la baie. */
+	function bottomU(rack, d) {
+		return rack.u_desc ? rack.units - (d.u_pos + d.u_height - 1) + 1 : d.u_pos;
+	}
+
+	function slotsClash(a, b) {
+		return !a || !b || a === b;
+	}
+
+	function fits(rack, dev, pos, height, slot) {
+		if (slot === undefined) { slot = dev ? (dev.slot || 0) : 0; }
 		if (pos < 1 || pos + height - 1 > rack.units) { return false; }
 		return !rack.devices.some(function (o) {
-			return o !== dev && pos <= o.u_pos + o.u_height - 1 && o.u_pos <= pos + height - 1;
+			return o !== dev && slotsClash(slot, o.slot || 0) && pos <= o.u_pos + o.u_height - 1 && o.u_pos <= pos + height - 1;
 		});
 	}
 
 	function firstFreeSlot(rack, height) {
-		for (var pos = rack.units - height + 1; pos >= 1; pos--) {
+		for (var i = 1; i <= rack.units - height + 1; i++) {
+			var pos = rack.u_desc ? i : rack.units - height + 2 - i;
 			if (fits(rack, null, pos, height)) { return pos; }
 		}
 		return 0;
@@ -731,6 +743,20 @@
 		return m ? parseInt(m[1], 10) - 1 : -1;
 	}
 
+	var SFP_SPEEDS = [1, 10, 25, 40, 100, 200, 400];
+
+	/** Groupes SFP d'un équipement : [{n, speed}] (ancien format sfp / sfp_speed accepté). */
+	function sfpGroups(d) {
+		if (Array.isArray(d.sfp_groups)) {
+			return d.sfp_groups.filter(function (g) { return g && g.n > 0; });
+		}
+		return d.sfp > 0 ? [{n: d.sfp, speed: d.sfp_speed || 10}] : [];
+	}
+
+	function sfpCount(d) {
+		return sfpGroups(d).reduce(function (t, g) { return t + g.n; }, 0);
+	}
+
 	var SFP_COLOR = {1: '#9aa3ad', 10: '#46c3d6', 25: '#4a90d9', 40: '#8e6bd1', 100: '#e0a21e', 200: '#e07a3a', 400: '#e0457b'};
 	var SFP_NAME = {1: 'SFP', 10: 'SFP+', 25: 'SFP28', 40: 'QSFP+', 100: 'QSFP28', 200: 'QSFP56', 400: 'QSFP-DD'};
 
@@ -738,15 +764,16 @@
 	 * Ports RJ45 puis SFP (cages colorées selon le débit), alignés à droite et réduits pour tenir dans maxW.
 	 * Les ports SFP prolongent la numérotation des RJ45 (ex. 48 RJ45 -> SFP = 49, 50...).
 	 */
-	function portBlock(g, xr, y, h, n, sfp, speed, used, reg, maxW) {
+	function portBlock(g, xr, y, h, n, sg, used, reg, maxW) {
 		n = Math.min(n || 0, 96);
-		sfp = Math.min(sfp || 0, 48);
-		var total = n + sfp;
+		var groups = [], start = 0, left = 48;
+		if (n) { groups.push({kind: 'rj45', count: n, start: 0, pw: 10}); start = n; }
+		(sg || []).forEach(function (sx) {
+			var c = Math.min(sx.n, left);
+			if (c > 0) { groups.push({kind: 'sfp', count: c, start: start, pw: sx.speed >= 40 ? 17 : 13, speed: sx.speed}); start += c; left -= c; }
+		});
+		var total = start, sfp = start - n;
 		if (!total) { return 0; }
-
-		var groups = [];
-		if (n) { groups.push({kind: 'rj45', count: n, start: 0, pw: 10}); }
-		if (sfp) { groups.push({kind: 'sfp', count: sfp, start: n, pw: speed >= 40 ? 17 : 13}); }
 
 		var maxRows = Math.max(1, Math.floor((h - 8) / 11));
 		var rows = Math.min(total > 8 ? 2 : 1, maxRows);
@@ -766,6 +793,7 @@
 		var cx = x0;
 		groups.forEach(function (gr) {
 			var gw = Math.ceil(gr.count / rows) * (gr.pw * k + gap * k) - gap * k;
+			var speed = gr.speed;
 			if (gr.kind === 'sfp') {
 				var lab = el('text', {x: cx + gw / 2, y: y0 - 2.5, 'text-anchor': 'middle', 'font-size': 6.5, 'font-weight': 700, fill: SFP_COLOR[speed] || '#aab1bb'}, g);
 				lab.textContent = (speed || 10) + 'G';
@@ -803,20 +831,87 @@
 		return W + 10;
 	}
 
-	function drawFace(g, d, x1, y, h, used, reg) {
-		var n = d.ports || 0, sf = d.sfp || 0, sp = d.sfp_speed || 10, t = d.type, w = 0;
+	/** Nombre de disques par défaut (ancien affichage) quand rien n'est configuré. */
+	function autoDisks(d) {
+		var half = d.slot > 0, u = d.u_height || 1;
+		if (d.type === 'storage') { return (half ? 2 : 4) * (u >= 2 ? 2 : 1); }
+		return Math.min(u, 4) * (half ? (u >= 2 ? 3 : 2) : (u >= 2 ? 6 : 4));
+	}
+
+	function diskCount(d) {
+		return d.disks >= 0 && d.disks !== undefined && d.disks !== null ? Math.min(60, d.disks) : autoDisks(d);
+	}
+
+	/** Baies disques : orientation horizontale (disques posés à plat, grille type Supermicro 3,5") ou verticale (2,5"). */
+	function diskBlock(g, x1, y, h, d, maxW) {
+		var n = diskCount(d);
+		if (n <= 0) { return 0; }
+		var vert = d.disk_orient === 1, gap = 4, innerH = h - 12, rows, cols, bw, bh;
+
+		if (!vert) {
+			// disques à plat : on cherche la grille dont les baies sont les plus larges que hautes
+			var rowsMax = Math.max(1, Math.floor((innerH + gap) / (10 + gap))), best = null;
+			for (var c = 1; c <= n; c++) {
+				var r = Math.ceil(n / c);
+				if (r > rowsMax) { continue; }
+				var h1 = (innerH - (r - 1) * gap) / r;
+				var w1 = Math.min(76, h1 * 3.6, (maxW - (c - 1) * gap) / c);
+				if (w1 < 14) { continue; }
+				var ratio = w1 / h1, good = ratio >= 2.2, waste = c * r - n;
+				if (!best || (good && !best.good) ||
+					(good === best.good && (good ? (waste < best.waste || (waste === best.waste && w1 > best.w)) : ratio > best.ratio))) {
+					best = {c: c, r: r, w: w1, good: good, ratio: ratio, waste: waste};
+				}
+			}
+			if (!best) { cols = Math.ceil(n / rowsMax); rows = Math.ceil(n / cols); bw = Math.max(8, (maxW - (cols - 1) * gap) / cols); }
+			else { cols = best.c; rows = best.r; bw = best.w; }
+		}
+		else {
+			// disques debout : fines baies verticales, sur une seule rangée si possible
+			var rowsMaxV = Math.max(1, Math.floor((innerH + gap) / (16 + gap)));
+			rows = 1;
+			cols = n;
+			bw = (maxW - (cols - 1) * gap) / cols;
+			while (bw < 7 && rows < rowsMaxV) {
+				rows++;
+				cols = Math.ceil(n / rows);
+				bw = (maxW - (cols - 1) * gap) / cols;
+			}
+			bw = Math.max(5, Math.min(11, bw));
+		}
+
+		bh = (innerH - (rows - 1) * gap) / rows;
+		// à plat : une baie est toujours nettement plus large que haute (jamais l'inverse)
+		if (!vert) { bh = Math.max(9, Math.min(bh, bw / 3.4)); }
+		var gridH = rows * bh + (rows - 1) * gap, top0 = y + (h - gridH) / 2;
+		var W = cols * (bw + gap) - gap, x0 = x1 - W;
+		for (var i = 0; i < n; i++) {
+			var bx = x0 + (i % cols) * (bw + gap), by = (vert ? y + 6 : top0) + Math.floor(i / cols) * (bh + gap);
+			el('rect', {x: bx, y: by, width: bw, height: bh, rx: 2, fill: '#14171a', stroke: '#6c737c', 'stroke-width': .8}, g);
+			if (vert) { el('rect', {x: bx + bw / 2 - 1, y: by + 5, width: 2, height: Math.max(2, bh - 10), rx: 1, fill: '#2c3238'}, g); }
+			else { el('rect', {x: bx + 2, y: by + bh / 2 - 1, width: bw - 4, height: 2, rx: 1, fill: '#2c3238'}, g); }
+			if (bw >= 8) { el('circle', {cx: bx + 3.5, cy: by + 3.5, r: 1.2, fill: '#46c37b'}, g); }
+		}
+		return W + 10;
+	}
+
+	function drawFace(g, d, x1, y, h, used, reg, fw) {
+		var n = d.ports || 0, sg = sfpGroups(d), t = d.type, w = 0, half = d.slot > 0;
+		fw = fw || 410;
+		var room = Math.min(110, fw * 0.3);
+		var nport = n + sg.reduce(function (t, x) { return t + x.n; }, 0);
+		var bayMax = Math.max(40, fw - room - 36 - (nport > 0 ? Math.min(0.35 * (fw - room), 12.5 * nport + 16, 120) : 0));
 
 		if (t === 'server') {
-			var rows = Math.min(d.u_height, 4), cols = d.u_height >= 2 ? 6 : 4;
-			w = bayGrid(g, x1 - 26, y, h, cols, rows, 30, true) + 26;
+			w = diskBlock(g, x1 - 26, y, h, d, bayMax) + 26;
 			el('circle', {cx: x1 - 10, cy: y + h / 2, r: 5.5, fill: '#1c1f23', stroke: '#aab1bb', 'stroke-width': 1}, g);
 			el('rect', {x: x1 - 10.6, y: y + h / 2 - 3.6, width: 1.2, height: 3.6, fill: '#aab1bb'}, g);
 		}
 		else if (t === 'switch' || t === 'router' || t === 'firewall') {
-			w = portBlock(g, x1, y, h, n, sf, sp, used, reg, 300);
+			w = portBlock(g, x1, y, h, n, sg, used, reg, fw - room);
 		}
 		else if (t === 'storage') {
-			w = bayGrid(g, x1, y, h, 4, Math.max(1, d.u_height >= 2 ? 2 : 1), 38, true);
+			w = diskBlock(g, x1, y, h, d, bayMax);
 		}
 		else if (t === 'ups') {
 			el('rect', {x: x1 - 84, y: y + 7, width: 70, height: Math.min(h - 14, 32), rx: 3, fill: '#13281b', stroke: '#0a150e', 'stroke-width': 1.5}, g);
@@ -827,7 +922,7 @@
 			w = 112;
 		}
 		else if (t === 'patch') {
-			var pn = Math.min(n || 24, 96), W0 = pn * 11 + Math.floor((pn - 1) / 6) * 3, kk = Math.max(0.4, Math.min(1, 330 / W0));
+			var pn = Math.min(n || 24, 96), W0 = pn * 11 + Math.floor((pn - 1) / 6) * 3, kk = Math.max(0.4, Math.min(1, (fw - 80) / W0));
 			var pw = 9 * kk, gap = 2 * kk, gx = 3 * kk, W = pn * (pw + gap) + Math.floor((pn - 1) / 6) * gx, px0 = x1 - W;
 			for (var i = 0; i < pn; i++) {
 				var px = px0 + i * (pw + gap) + Math.floor(i / 6) * gx;
@@ -842,12 +937,12 @@
 			w = W + 8;
 		}
 		else if (t === 'pdu') {
-			var on = Math.min(n || 8, 16), ow = 24;
+			var on = Math.min(n || 8, 16), ow = Math.max(8, Math.min(24, (fw - 90) / on - 4));
 			for (var k = 0; k < on; k++) {
 				var ox = x1 - (on - k) * (ow + 4) + 4;
 				el('rect', {x: ox, y: y + 6, width: ow, height: h - 12, rx: 4, fill: '#15181b', stroke: '#8c939c', 'stroke-width': .8}, g);
 				[0, 1].forEach(function (s) {
-					el('rect', {x: ox + 6 + s * 8, y: y + h / 2 - 4, width: 2.4, height: 8, rx: 1, fill: '#c9a43a'}, g);
+					el('rect', {x: ox + ow * 0.25 + s * ow / 3, y: y + h / 2 - 4, width: 2.4, height: 8, rx: 1, fill: '#c9a43a'}, g);
 				});
 				if (reg) { reg(k, ox + ow / 2, y + h / 2); }
 				if (used[k]) { el('circle', {cx: ox + ow - 4, cy: y + 9, r: 1.8, fill: used[k], filter: 'url(#rm-glow)'}, g); }
@@ -859,11 +954,11 @@
 			w = 76;
 		}
 
-		if ((t === 'server' || t === 'storage' || t === 'other') && (n > 0 || sf > 0)) {
-			w += portBlock(g, x1 - w - 6, y, h, n, sf, sp, used, reg, Math.max(60, 290 - w));
+		if ((t === 'server' || t === 'storage' || t === 'other') && (n > 0 || sg.length)) {
+			w += portBlock(g, x1 - w - 6, y, h, n, sg, used, reg, Math.max(40, fw - room - 10 - w));
 		}
 		else if (t === 'ups' && n > 0) {
-			w += portBlock(g, x1 - w - 6, y, h, n, 0, 0, used, reg, Math.max(60, 290 - w));
+			w += portBlock(g, x1 - w - 6, y, h, n, [], used, reg, Math.max(40, fw - room - 10 - w));
 		}
 
 		return w;
@@ -891,7 +986,7 @@
 		el('rect', {x: x + EAR - 3, y: y + 3, width: 3, height: h - 6, rx: 1.5, fill: color}, g);
 		el('circle', {cx: x + w - EAR / 2, cy: y + h / 2, r: 3.6, fill: color, filter: 'url(#rm-glow)'}, g);
 
-		var reserved = drawFace(g, d, x + w - EAR - 8, y, h, used || {}, reg);
+		var reserved = drawFace(g, d, x + w - EAR - 8, y, h, used || {}, reg, w - 2 * EAR - 18);
 
 		var nx = x + EAR + 10, avail = (x + w - EAR - 8) - nx - reserved - 6;
 		var maxc = Math.max(3, Math.floor(avail / 7.6));
@@ -904,7 +999,7 @@
 		tx.textContent = label;
 		if (d.u_height > 1 && TYPE_LABEL[d.type] !== undefined) {
 			var tg = el('text', {x: nx, y: y + 34, 'font-size': 9.5, fill: '#aab1bb', 'letter-spacing': '.05em'}, g);
-			tg.textContent = (L['t_' + d.type] || '').toUpperCase() + '  ·  U' + d.u_pos + '–U' + (d.u_pos + d.u_height - 1);
+			tg.textContent = (L['t_' + d.type] || '').toUpperCase();
 		}
 
 		if (selected) {
@@ -946,7 +1041,7 @@
 					(usedPorts[d.id] = usedPorts[d.id] || {})[e.idx] = e.l.color || CABLE_COLOR[e.l.cable] || CABLE_COLOR.other;
 				}
 			});
-			effPorts[d.id] = Math.min(96, Math.max((d.ports || 0) + (d.sfp || 0), max + 1));
+			effPorts[d.id] = Math.min(96, Math.max((d.ports || 0) + sfpCount(d), max + 1));
 		});
 
 		return {resolved: resolved, effPorts: effPorts, usedPorts: usedPorts};
@@ -975,7 +1070,11 @@
 
 		var occupied = {};
 		rack.devices.forEach(function (d) {
-			for (var u = d.u_pos; u < d.u_pos + d.u_height; u++) { occupied[u] = true; }
+			var bu0 = bottomU(rack, d);
+			for (var u = bu0; u < bu0 + d.u_height; u++) {
+				var oc = occupied[u] = occupied[u] || {};
+				if (!d.slot) { oc.l = oc.r = true; } else if (d.slot === 1) { oc.l = true; } else { oc.r = true; }
+			}
 		});
 
 		for (var u = 1; u <= rack.units; u++) {
@@ -986,9 +1085,14 @@
 				});
 			});
 			var t = el('text', {x: fx - 12, y: y + UH / 2 + 4, 'text-anchor': 'end', 'font-size': 10.5, fill: '#8a8f98'}, svg);
-			t.textContent = u;
-			if (!occupied[u]) {
+			t.textContent = rack.u_desc ? rack.units - u + 1 : u;
+			var oc2 = occupied[u] || {};
+			if (!oc2.l && !oc2.r) {
 				el('rect', {x: RACK_X + 1, y: y + 1, width: RACK_W - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg);
+			}
+			else {
+				if (!oc2.l) { el('rect', {x: RACK_X + 1, y: y + 1, width: RACK_W / 2 - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg); }
+				if (!oc2.r) { el('rect', {x: RACK_X + RACK_W / 2 + 1, y: y + 1, width: RACK_W / 2 - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg); }
 			}
 		}
 
@@ -997,14 +1101,15 @@
 
 		rack.devices.forEach(function (d) {
 			var st = deviceState(d, hosts);
-			var y = TOP + (rack.units - (d.u_pos + d.u_height - 1)) * UH;
+			var y = TOP + (rack.units - (bottomU(rack, d) + d.u_height - 1)) * UH;
 			var h = d.u_height * UH;
-			ctx.pos[d.id] = {y: y, h: h, cy: y + h / 2, ox: ox};
+			var slot = d.slot || 0, dw = slot ? RACK_W / 2 - 1 : RACK_W, dx = slot === 2 ? RACK_X + RACK_W / 2 + 1 : RACK_X;
+			ctx.pos[d.id] = {y: y, h: h, cy: y + h / 2, ox: ox, rx: dx + dw};
 			var color = st.state === 'problem' && st.severity >= 0 ? SEV_COLOR[st.severity] : (st.state === 'down' ? COL_DOWN : STATE_COLOR[st.state]);
 			var selected = editing ? (!ro && state.edit.selected === d.id) : state.sel === d.id;
 			var tip = d.name + ' - ' + L['st_' + st.state] + (st.problems ? ' (' + st.problems + ' ' + L.problems + ')' : '');
 			ctx.ports[d.id] = {};
-			var g = drawDevice(svg, Object.assign({}, d, {ports: Math.max(0, ctx.res.effPorts[d.id] - (d.sfp || 0))}), RACK_X, y, RACK_W, h, color, st, tip, selected, ctx.res.usedPorts[d.id],
+			var g = drawDevice(svg, Object.assign({}, d, {ports: Math.max(0, ctx.res.effPorts[d.id] - sfpCount(d))}), dx, y, dw, h, color, st, tip, selected, ctx.res.usedPorts[d.id],
 				function (i, px, py) { ctx.ports[d.id][i] = {x: px + ox, y: py}; });
 			ctx.devEls[d.id] = g;
 			ctx.devState[d.id] = st.state;
@@ -1078,7 +1183,7 @@
 			var idx = ctx.res.resolved[key], p = ctx.ports[id] && ctx.ports[id][idx];
 			if (p) { return p; }
 			var ps = ctx.pos[id], k = fall[id] = (fall[id] || 0) + 1;
-			return {x: ps.ox + RACK_X + RACK_W - 24, y: ps.cy + (k - 1) * 7 - 3};
+			return {x: ps.ox + ps.rx - 24, y: ps.cy + (k - 1) * 7 - 3};
 		};
 
 		var traffic = (state.data && state.data.traffic) || {};
@@ -1214,9 +1319,10 @@
 		function onMove(e) {
 			var delta = Math.round((startY - e.clientY) / (UH * (state.scale || 1)));
 			if (delta !== 0) { moved = true; }
-			var np = startPos + delta;
+			var sgn = rack.u_desc ? -1 : 1;
+			var np = startPos + sgn * delta;
 			if (fits(rack, dev, np, dev.u_height)) { target = np; }
-			g.setAttribute('transform', 'translate(0,' + (-(target - startPos) * UH) + ')');
+			g.setAttribute('transform', 'translate(0,' + (-sgn * (target - startPos) * UH) + ')');
 		}
 
 		function onUp() {
@@ -1254,6 +1360,14 @@
 		var seen = {};
 		allRacks().forEach(function (r) { if (r.site && !seen[r.site]) { seen[r.site] = 1; html('option', {value: r.site}, undefined, sdl); } });
 		field(b1, L.datacenter, textInput(rack.site || '', function (v) { rack.site = v.trim(); }, {list: 'rackmap-sites'}));
+		field(b1, L.u_numbering, select([['0', L.u_bottom], ['1', L.u_top]], String(rack.u_desc || 0), function (v) {
+			v = parseInt(v, 10);
+			if (v === (rack.u_desc || 0)) { return; }
+			// la disposition physique est conservée : seuls les numéros changent
+			rack.devices.forEach(function (d) { d.u_pos = rack.units - (d.u_pos + d.u_height - 1) + 1; });
+			rack.u_desc = v;
+			render();
+		}));
 		field(b1, L.description, textInput(rack.description, function (v) { rack.description = v; }));
 
 		var b2 = box(L.device);
@@ -1261,7 +1375,7 @@
 			var pos = firstFreeSlot(rack, 1);
 			if (!pos) { setMessage(L.no_space, false); return; }
 			var id = --state.tmp;
-			rack.devices.push({id: id, name: L.new_device, type: 'server', hostid: null, u_pos: pos, u_height: 1, ports: 0, sfp: 0, sfp_speed: 10});
+			rack.devices.push({id: id, name: L.new_device, type: 'server', hostid: null, u_pos: pos, u_height: 1, ports: 0, sfp_groups: [], slot: 0, disks: -1, disk_orient: 0});
 			state.edit.selected = id;
 			setMessage('', true);
 			render();
@@ -1308,10 +1422,29 @@
 			field(form, L.ports, numInput(dev.ports, 0, 96, function (v) { dev.ports = v; render(); }));
 		}
 		if (['switch', 'router', 'firewall', 'server', 'storage', 'other'].indexOf(dev.type) >= 0) {
-			field(form, L.ports_sfp, numInput(dev.sfp || 0, 0, 48, function (v) { dev.sfp = v; render(); }));
-			field(form, L.sfp_speed, select([1, 10, 25, 40, 100, 200, 400].map(function (v) { return [String(v), v + 'G  ' + SFP_NAME[v]]; }),
-				String(dev.sfp_speed || 10), function (v) { dev.sfp_speed = parseInt(v, 10); render(); }));
+			var gs = dev.sfp_groups = sfpGroups(dev).map(function (x) { return {n: x.n, speed: x.speed}; });
+			html('div', {style: 'margin:6px 0 2px;font-weight:600'}, L.ports_sfp, form);
+			gs.forEach(function (gx, gi) {
+				var row = html('div', {style: 'display:flex;gap:6px;align-items:center;margin:3px 0'}, undefined, form);
+				var ni = numInput(gx.n, 1, 48, function (v) { gx.n = v; render(); });
+				ni.style.width = '64px';
+				row.appendChild(ni);
+				row.appendChild(select(SFP_SPEEDS.map(function (v) { return [String(v), v + 'G  ' + SFP_NAME[v]]; }), String(gx.speed), function (v) { gx.speed = parseInt(v, 10); render(); }));
+				button('\u2715', 'btn-alt', function () { gs.splice(gi, 1); render(); }, row);
+			});
+			if (gs.length < 6) {
+				button('+ ' + L.sfp_group, 'btn-alt', function () { gs.push({n: 2, speed: 10}); render(); }, form);
+			}
 		}
+		if (dev.type === 'server' || dev.type === 'storage') {
+			field(form, L.disks, numInput(diskCount(dev), 0, 60, function (v) { dev.disks = v; render(); }));
+			field(form, L.disk_orient, select([['0', L.disk_h], ['1', L.disk_v]], String(dev.disk_orient || 0), function (v) { dev.disk_orient = parseInt(v, 10); render(); }));
+		}
+		field(form, L.width, select([['0', L.w_full], ['1', L.w_left], ['2', L.w_right]], String(dev.slot || 0), function (v) {
+			v = parseInt(v, 10);
+			if (!fits(rack, dev, dev.u_pos, dev.u_height, v)) { setMessage(L.err_move, false); render(); return; }
+			dev.slot = v; setMessage('', true); render();
+		}));
 
 		button(L.remove, 'btn-alt', function () {
 			rack.devices = rack.devices.filter(function (d) { return d !== dev; });
@@ -1348,7 +1481,7 @@
 		});
 
 		var opts = [];
-		allRacks().forEach(function (r) {
+		allRacks().sort(function (x, y) { return (y.id === rack.id) - (x.id === rack.id); }).forEach(function (r) {
 			r.devices.forEach(function (d) { opts.push([d.id, (r.id === rack.id ? '' : r.name + ' \u00b7 ') + d.name]); });
 		});
 		if (opts.length < 2) { return; }
@@ -1388,7 +1521,7 @@
 	/* ---------- actions ---------- */
 
 	function startEdit(rack) {
-		var work = rack ? clone(rack) : {id: 0, name: L.new_rack, units: 42, description: '', site: state.site || '', devices: [], links: []};
+		var work = rack ? clone(rack) : {id: 0, name: L.new_rack, units: 42, description: '', site: state.site || '', u_desc: 0, devices: [], links: []};
 		state.edit = {rack: work, selected: null, message: '', newLink: null, pending: null};
 		render();
 
@@ -1401,9 +1534,10 @@
 	function save() {
 		var r = state.edit.rack;
 		var payload = {
-			id: r.id, name: r.name, units: r.units, description: r.description, site: r.site || '',
+			id: r.id, name: r.name, units: r.units, description: r.description, site: r.site || '', u_desc: r.u_desc || 0,
 			devices: r.devices.map(function (d) {
-				return {id: d.id, name: d.name, type: d.type, hostid: d.hostid, u_pos: d.u_pos, u_height: d.u_height, ports: d.ports, sfp: d.sfp || 0, sfp_speed: d.sfp_speed || 10};
+				return {id: d.id, name: d.name, type: d.type, hostid: d.hostid, u_pos: d.u_pos, u_height: d.u_height, ports: d.ports, sfp_groups: sfpGroups(d), slot: d.slot || 0,
+					disks: d.disks === undefined || d.disks === null ? -1 : d.disks, disk_orient: d.disk_orient || 0};
 			}),
 			links: r.links.map(function (l) {
 				return {a: l.a, b: l.b, a_port: l.a_port, b_port: l.b_port, a_iface: l.a_iface || '', b_iface: l.b_iface || '', cable: l.cable, color: l.color, label: l.label};

@@ -112,6 +112,18 @@
 	"all_dc": "Tous les datacenters",
 	"racks": "Baies",
 	"ports_rj45": "Ports RJ45",
-	"ports_sfp": "Ports SFP",
-	"sfp_speed": "Débit SFP"
+	"ports_sfp": "Ports SFP (nombre et débit)",
+	"sfp_speed": "Débit SFP",
+	"sfp_group": "Groupe SFP",
+	"width": "Largeur",
+	"w_full": "Pleine largeur",
+	"w_left": "Demi – gauche",
+	"w_right": "Demi – droite",
+	"disks": "Disques",
+	"disk_orient": "Disposition des disques",
+	"disk_h": "Baies horizontales",
+	"disk_v": "Baies verticales",
+	"u_numbering": "Numérotation des U",
+	"u_bottom": "De bas en haut (U1 en bas)",
+	"u_top": "De haut en bas (U1 en haut)"
 }

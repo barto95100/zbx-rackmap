@@ -39,18 +39,40 @@ class Store {
 		}
 	}
 
+	private const SFP_SPEEDS = [1, 10, 25, 40, 100, 200, 400];
+
+	/** "10:4,100:2" -> [['n' => 4, 'speed' => 10], ['n' => 2, 'speed' => 100]] (ancien format : sfp_ports + sfp_speed). */
+	private static function parseSfp(string $spec, int $count, int $speed): array {
+		$groups = [];
+
+		if ($spec !== '') {
+			foreach (explode(',', $spec) as $part) {
+				[$sp, $n] = array_pad(explode(':', $part), 2, '0');
+
+				if ((int) $n > 0 && in_array((int) $sp, self::SFP_SPEEDS, true)) {
+					$groups[] = ['n' => (int) $n, 'speed' => (int) $sp];
+				}
+			}
+		}
+		elseif ($count > 0) {
+			$groups[] = ['n' => $count, 'speed' => in_array($speed, self::SFP_SPEEDS, true) ? $speed : 10];
+		}
+
+		return $groups;
+	}
+
 	/** Toutes les baies avec équipements et liens. */
 	public static function all(): array {
 		$racks = [];
 
-		foreach (DBfetchArray(DBselect('SELECT rackid,name,units,description'.(self::hasCol('rackmap_rack', 'site') ? ',site' : '').' FROM rackmap_rack ORDER BY name')) as $r) {
+		foreach (DBfetchArray(DBselect('SELECT rackid,name,units,description'.(self::hasCol('rackmap_rack', 'site') ? ',site' : '').(self::hasCol('rackmap_rack', 'u_desc') ? ',u_desc' : '').' FROM rackmap_rack ORDER BY name')) as $r) {
 			$racks[(int) $r['rackid']] = [
 				'id' => (int) $r['rackid'], 'name' => $r['name'], 'units' => (int) $r['units'],
-				'description' => $r['description'], 'site' => $r['site'] ?? '', 'devices' => [], 'links' => []
+				'description' => $r['description'], 'site' => $r['site'] ?? '', 'u_desc' => (int) ($r['u_desc'] ?? 0), 'devices' => [], 'links' => []
 			];
 		}
 
-		foreach (DBfetchArray(DBselect('SELECT deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.(self::hasCol('rackmap_device', 'sfp_ports') ? ',sfp_ports,sfp_speed' : '').' FROM rackmap_device ORDER BY u_pos')) as $d) {
+		foreach (DBfetchArray(DBselect('SELECT deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.(self::hasCol('rackmap_device', 'sfp_ports') ? ',sfp_ports,sfp_speed' : '').(self::hasCol('rackmap_device', 'sfp_spec') ? ',sfp_spec' : '').(self::hasCol('rackmap_device', 'slot') ? ',slot' : '').(self::hasCol('rackmap_device', 'disks') ? ',disks,disk_orient' : '').' FROM rackmap_device ORDER BY u_pos')) as $d) {
 			if (!isset($racks[(int) $d['rackid']])) {
 				continue;
 			}
@@ -58,7 +80,9 @@ class Store {
 				'id' => (int) $d['deviceid'], 'name' => $d['name'], 'type' => $d['type'],
 				'hostid' => $d['hostid'] === null ? null : (string) $d['hostid'],
 				'u_pos' => (int) $d['u_pos'], 'u_height' => (int) $d['u_height'], 'ports' => (int) $d['ports'],
-				'sfp' => (int) ($d['sfp_ports'] ?? 0), 'sfp_speed' => (int) ($d['sfp_speed'] ?? 10)
+				'sfp_groups' => self::parseSfp((string) ($d['sfp_spec'] ?? ''), (int) ($d['sfp_ports'] ?? 0), (int) ($d['sfp_speed'] ?? 10)),
+				'slot' => (int) ($d['slot'] ?? 0),
+				'disks' => (int) ($d['disks'] ?? -1), 'disk_orient' => (int) ($d['disk_orient'] ?? 0)
 			];
 		}
 
@@ -93,6 +117,8 @@ class Store {
 
 		$site = mb_substr(trim((string) ($rack['site'] ?? '')), 0, 128);
 		$hasSite = self::hasCol('rackmap_rack', 'site');
+		$hasDesc = self::hasCol('rackmap_rack', 'u_desc');
+		$udesc = (int) ($rack['u_desc'] ?? 0) === 1 ? 1 : 0;
 		$desc = zbx_dbstr(mb_substr((string) ($rack['description'] ?? ''), 0, 255));
 
 		DBstart();
@@ -104,7 +130,7 @@ class Store {
 
 			if ($rackid > 0) {
 				DBexecute('UPDATE rackmap_rack SET name='.zbx_dbstr($name).',units='.$units.',description='.$desc.
-					($hasSite ? ',site='.zbx_dbstr($site) : '').' WHERE rackid='.$rackid);
+					($hasSite ? ',site='.zbx_dbstr($site) : '').($hasDesc ? ',u_desc='.$udesc : '').' WHERE rackid='.$rackid);
 				DBexecute('DELETE FROM rackmap_link WHERE rackid='.$rackid);
 
 				foreach (DBfetchArray(DBselect('SELECT deviceid FROM rackmap_device WHERE rackid='.$rackid)) as $r) {
@@ -113,8 +139,8 @@ class Store {
 			}
 			else {
 				$rackid = self::nextId('rackmap_rack', 'rackid');
-				DBexecute('INSERT INTO rackmap_rack (rackid,name,units,description'.($hasSite ? ',site' : '').') VALUES ('.
-					$rackid.','.zbx_dbstr($name).','.$units.','.$desc.($hasSite ? ','.zbx_dbstr($site) : '').')');
+				DBexecute('INSERT INTO rackmap_rack (rackid,name,units,description'.($hasSite ? ',site' : '').($hasDesc ? ',u_desc' : '').') VALUES ('.
+					$rackid.','.zbx_dbstr($name).','.$units.','.$desc.($hasSite ? ','.zbx_dbstr($site) : '').($hasDesc ? ','.$udesc : '').')');
 			}
 
 			// les équipements existants gardent leur identifiant (les câbles venant d'autres baies restent valides)
@@ -129,13 +155,39 @@ class Store {
 				$dname = zbx_dbstr(mb_substr((string) ($d['name'] ?? ''), 0, 128));
 				$type = zbx_dbstr(preg_replace('/[^a-z_]/', '', strtolower((string) ($d['type'] ?? 'other'))));
 				$ports = max(0, min(96, (int) ($d['ports'] ?? 0)));
-				$hasSfp = self::hasCol('rackmap_device', 'sfp_ports');
-				$sfp = max(0, min(48, (int) ($d['sfp'] ?? 0)));
-				$speed = in_array((int) ($d['sfp_speed'] ?? 10), [1, 10, 25, 40, 100, 200, 400], true) ? (int) $d['sfp_speed'] : 10;
+				$groups = [];
+				$totalSfp = 0;
+
+				foreach (array_slice((array) ($d['sfp_groups'] ?? []), 0, 6) as $gx) {
+					$gn = max(0, min(48 - $totalSfp, (int) ($gx['n'] ?? 0)));
+					$gs = (int) ($gx['speed'] ?? 10);
+
+					if ($gn > 0 && in_array($gs, self::SFP_SPEEDS, true)) {
+						$groups[] = $gs.':'.$gn;
+						$totalSfp += $gn;
+					}
+				}
+
+				$extra = [];
+
+				if (self::hasCol('rackmap_device', 'sfp_ports')) {
+					$extra['sfp_ports'] = (string) $totalSfp;
+					$extra['sfp_speed'] = (string) ($groups ? (int) explode(':', $groups[0])[0] : 10);
+				}
+				if (self::hasCol('rackmap_device', 'sfp_spec')) {
+					$extra['sfp_spec'] = zbx_dbstr(implode(',', $groups));
+				}
+				if (self::hasCol('rackmap_device', 'disks')) {
+					$extra['disks'] = (string) max(-1, min(60, (int) ($d['disks'] ?? -1)));
+					$extra['disk_orient'] = (string) ((int) ($d['disk_orient'] ?? 0) === 1 ? 1 : 0);
+				}
+				if (self::hasCol('rackmap_device', 'slot')) {
+					$extra['slot'] = (string) max(0, min(2, (int) ($d['slot'] ?? 0)));
+				}
 
 				if ($cid !== '' && isset($existing[$cid])) {
 					DBexecute('UPDATE rackmap_device SET name='.$dname.',type='.$type.',hostid='.$hostid.',u_pos='.$pos.
-						',u_height='.$height.',ports='.$ports.($hasSfp ? ',sfp_ports='.$sfp.',sfp_speed='.$speed : '').' WHERE deviceid='.(int) $cid.' AND rackid='.$rackid);
+						',u_height='.$height.',ports='.$ports.self::setList($extra).' WHERE deviceid='.(int) $cid.' AND rackid='.$rackid);
 					$map[$cid] = (int) $cid;
 					$kept[$cid] = true;
 					continue;
@@ -143,8 +195,8 @@ class Store {
 
 				$id = self::nextId('rackmap_device', 'deviceid');
 				$map[$cid !== '' ? $cid : (string) $id] = $id;
-				DBexecute('INSERT INTO rackmap_device (deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.($hasSfp ? ',sfp_ports,sfp_speed' : '').') VALUES ('.
-					$id.','.$rackid.','.$dname.','.$type.','.$hostid.','.$pos.','.$height.','.$ports.($hasSfp ? ','.$sfp.','.$speed : '').')');
+				DBexecute('INSERT INTO rackmap_device (deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.($extra ? ','.implode(',', array_keys($extra)) : '').') VALUES ('.
+					$id.','.$rackid.','.$dname.','.$type.','.$hostid.','.$pos.','.$height.','.$ports.($extra ? ','.implode(',', $extra) : '').')');
 			}
 
 			foreach ($existing as $cid => $_) {
@@ -201,6 +253,17 @@ class Store {
 		}
 
 		return $rackid;
+	}
+
+	/** ['a' => '1', 'b' => "'x'"] -> ",a=1,b='x'" */
+	private static function setList(array $extra): string {
+		$out = '';
+
+		foreach ($extra as $col => $val) {
+			$out .= ','.$col.'='.$val;
+		}
+
+		return $out;
 	}
 
 	public static function delete(int $rackid): void {

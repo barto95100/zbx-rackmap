@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS rackmap_rack (
 	name         varchar(128) NOT NULL,
 	units        integer      NOT NULL DEFAULT 42,
 	description  varchar(255) NOT NULL DEFAULT '',
-	site         varchar(128) NOT NULL DEFAULT ''   -- datacenter / site (regroupement des baies)
+	site         varchar(128) NOT NULL DEFAULT '',  -- datacenter / site (regroupement des baies)
+	u_desc       smallint     NOT NULL DEFAULT 0    -- numérotation des U : 0 de bas en haut, 1 de haut en bas
 );
 
 CREATE TABLE IF NOT EXISTS rackmap_device (
@@ -20,7 +21,11 @@ CREATE TABLE IF NOT EXISTS rackmap_device (
 	u_height  integer      NOT NULL DEFAULT 1,
 	ports     integer      NOT NULL DEFAULT 0,            -- ports RJ45
 	sfp_ports integer      NOT NULL DEFAULT 0,            -- ports SFP/QSFP
-	sfp_speed integer      NOT NULL DEFAULT 10            -- débit SFP en Gb/s (1, 10, 25, 40, 100, 200, 400)
+	sfp_speed integer      NOT NULL DEFAULT 10,           -- (ancien format) débit SFP en Gb/s
+	sfp_spec  varchar(128) NOT NULL DEFAULT '',           -- groupes SFP "débit:nombre,..." ex. 10:4,100:2
+	slot      smallint     NOT NULL DEFAULT 0,            -- largeur : 0 pleine, 1 demi gauche, 2 demi droite
+	disks     smallint     NOT NULL DEFAULT -1,           -- nombre de disques (-1 = automatique)
+	disk_orient smallint   NOT NULL DEFAULT 0             -- 0 baies horizontales, 1 verticales
 );
 CREATE INDEX IF NOT EXISTS rackmap_device_rack ON rackmap_device (rackid);
 
