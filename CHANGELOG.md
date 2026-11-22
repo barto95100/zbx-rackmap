@@ -1,40 +1,40 @@
 # Changelog
 
 ## 0.10.0
-- Sens de numérotation des U par baie (de bas en haut ou de haut en bas).
-- Baies disques horizontales plus larges que hautes, verticales plus fines ; la position U n'est plus répétée sur la face des équipements.
-- Mise à niveau : `sql/upgrade-0.10.*.sql`.
+- U numbering direction per rack (bottom-to-top or top-to-bottom).
+- Horizontal drive bays are now flat (wider than tall), vertical ones are thin and tall; the U position is no longer repeated on the device face.
+- Upgrade: `sql/upgrade-0.10.*.sql`.
 
 ## 0.9.0
-- Nombre de disques configurable (serveurs, NAS) et disposition horizontale (3,5") ou verticale (2,5").
-- Mise à niveau : `sql/upgrade-0.9.*.sql`.
+- Configurable number of drives (servers, NAS) and horizontal (3.5") or vertical (2.5") layout.
+- Upgrade: `sql/upgrade-0.9.*.sql`.
 
 ## 0.8.0
-- Plusieurs groupes SFP (nombre + débit) par équipement, ex. 4×10G + 2×100G.
-- Équipements demi-largeur (gauche / droite) : deux petits serveurs côte à côte dans le même U.
-- Mise à niveau : `sql/upgrade-0.8.*.sql`.
+- Several SFP groups (count + speed) per device, e.g. 4×10G + 2×100G.
+- Half-width devices (left / right): two small servers side by side in the same U.
+- Upgrade: `sql/upgrade-0.8.*.sql`.
 
 ## 0.7.0
-- Ports RJ45 + ports SFP (1/10/25/40/100/200/400 G, cages colorées par débit) ; les ports tiennent dans la face de l'équipement (48 ports, patch panels).
-- Mise à niveau : `sql/upgrade-0.7.*.sql`.
+- RJ45 ports + SFP ports (1/10/25/40/100/200/400 G, cages colored by speed); ports fit inside the device face (48 ports, patch panels).
+- Upgrade: `sql/upgrade-0.7.*.sql`.
 
 ## 0.6.0
-- Datacenter par baie ; choix du datacenter et des baies à afficher (plusieurs baies côte à côte).
-- Câbles entre baies (tracé à la souris en édition, les autres baies affichées en lecture seule).
-- Zoom / ajustement à la fenêtre, export PNG.
-- L'enregistrement conserve les identifiants des équipements.
-- Mise à niveau : `sql/upgrade-0.6.*.sql` (colonne `site`).
+- Datacenter per rack; choose which datacenter and racks to display (several racks side by side).
+- Cables between racks (drawn with the mouse while editing, other racks shown read-only).
+- Zoom / fit to window, PNG export.
+- Saving keeps device identifiers.
+- Upgrade: `sql/upgrade-0.6.*.sql` (`site` column).
 
 ## 0.5.0
-- Câbles tracés à la souris dans l'éditeur (clic sur un port, puis sur un autre).
-- Support MySQL/MariaDB (`sql/*.mysql.sql`), détection des colonnes portable.
+- Cables drawn with the mouse in the editor (click a port, then another).
+- MySQL/MariaDB support (`sql/*.mysql.sql`), portable column detection.
 
 ## 0.4.0
-- Câbles toujours reliés à un vrai port (ports virtuels), mise en évidence des équipements connectés au clic.
-- Animation des câbles selon le débit (`net.if.in/out`), champ « Interface » par extrémité, case « Animer le trafic ».
+- Cables always attached to a real port (virtual ports), connected devices highlighted on click.
+- Cable animation based on throughput (`net.if.in/out`), "Interface" field per end, "Animate traffic" checkbox.
 
 ## 0.3.0
-- Baie réaliste, panneau latéral type Cablemap, câbles à la demande.
+- Realistic rack, Cablemap-style side panel, cables on demand.
 
 ## 0.1.0 – 0.2.0
-- Squelette, tables SQL, éditeur visuel.
+- Skeleton, SQL tables, visual editor.
