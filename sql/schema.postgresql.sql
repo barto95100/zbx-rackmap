@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS rackmap_device (
 	sfp_spec  varchar(128) NOT NULL DEFAULT '',           -- groupes SFP "débit:nombre,..." ex. 10:4,100:2
 	slot      smallint     NOT NULL DEFAULT 0,            -- largeur : 0 pleine, 1 demi gauche, 2 demi droite
 	disks     smallint     NOT NULL DEFAULT -1,           -- nombre de disques (-1 = automatique)
-	disk_orient smallint   NOT NULL DEFAULT 0             -- 0 baies horizontales, 1 verticales
+	disk_orient smallint   NOT NULL DEFAULT 0,            -- 0 baies horizontales, 1 verticales
+	port_face smallint     NOT NULL DEFAULT 0,            -- face des ports RJ45/SFP : 0 avant, 1 arrière
+	pp_media  smallint     NOT NULL DEFAULT 0             -- patch panel : 0 RJ45, 1 fibre (LC)
 );
 CREATE INDEX IF NOT EXISTS rackmap_device_rack ON rackmap_device (rackid);
 
@@ -40,6 +42,8 @@ CREATE TABLE IF NOT EXISTS rackmap_link (
 	color       varchar(16) NOT NULL DEFAULT '',
 	label       varchar(128) NOT NULL DEFAULT '',
 	a_iface     varchar(64)  NOT NULL DEFAULT '',   -- interface Zabbix côté A (vide = le port) pour le trafic
-	b_iface     varchar(64)  NOT NULL DEFAULT ''
+	b_iface     varchar(64)  NOT NULL DEFAULT '',
+	a_face      smallint     NOT NULL DEFAULT 0,        -- face du port côté A (patch panel) : 0 avant, 1 arrière
+	b_face      smallint     NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS rackmap_link_rack ON rackmap_link (rackid);

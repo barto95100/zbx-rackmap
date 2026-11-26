@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS rackmap_device (
 	slot      smallint NOT NULL DEFAULT 0,
 	disks     smallint NOT NULL DEFAULT -1,
 	disk_orient smallint NOT NULL DEFAULT 0,
+	port_face smallint NOT NULL DEFAULT 0,
+	pp_media  smallint NOT NULL DEFAULT 0,
 	PRIMARY KEY (deviceid),
 	KEY rackmap_device_rack (rackid),
 	CONSTRAINT rackmap_device_rack_fk FOREIGN KEY (rackid) REFERENCES rackmap_rack (rackid) ON DELETE CASCADE
@@ -44,6 +46,8 @@ CREATE TABLE IF NOT EXISTS rackmap_link (
 	label       varchar(128) NOT NULL DEFAULT '',
 	a_iface     varchar(64)  NOT NULL DEFAULT '',
 	b_iface     varchar(64)  NOT NULL DEFAULT '',
+	a_face      smallint     NOT NULL DEFAULT 0,
+	b_face      smallint     NOT NULL DEFAULT 0,
 	PRIMARY KEY (linkid),
 	KEY rackmap_link_rack (rackid),
 	CONSTRAINT rackmap_link_rack_fk FOREIGN KEY (rackid) REFERENCES rackmap_rack (rackid) ON DELETE CASCADE,

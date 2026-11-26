@@ -18,7 +18,7 @@
 		no_space: 'No free space for this device.', err_host: 'Host not found', host_linked: 'linked', err_units: 'Some devices are above this height.',
 		err_move: 'Not enough free space there.', err_save: 'Save failed', saved: 'Saved', no_cables: 'No cable.',
 		t_server: 'Server', t_switch: 'Switch', t_router: 'Router', t_firewall: 'Firewall', t_patch: 'Patch panel',
-		t_pdu: 'PDU', t_ups: 'UPS', t_storage: 'Storage', t_other: 'Other',
+		rear_theme: 'Rear theme', rt_light: 'Light', rt_color: 'Color', rt_dark: 'Dark', rack_style: 'Rack style', rs_cabinet: 'Cabinet', rs_open: 'Open frame', rs_card: 'Modern card', face_view: 'View', face_front: 'Front', face_rear: 'Rear', face_both: 'Front + rear', port_face: 'Ports on', pf_front: 'Front', pf_rear: 'Rear', pp_media: 'Ports', pp_rj45: 'RJ45', pp_fiber: 'Fiber (LC)', t_pdu: 'PDU', t_ups: 'UPS', t_storage: 'Storage', t_other: 'Other',
 		close: 'Close', loading: 'Loading\u2026', p_metrics: 'Metrics', p_ifaces: 'Interfaces', p_groups: 'Host groups',
 		p_problems: 'Active problems', since: 'since', maintenance: 'In maintenance', btn_problems: 'Problems', btn_latest: 'Latest data',
 		btn_dash: 'Dashboard', btn_graphs: 'Graphs', btn_host: 'Settings', if_ok: 'Available', if_ko: 'Unavailable', if_unk: 'Unknown',
@@ -48,6 +48,22 @@
 		var shn = JSON.parse(localStorage.getItem('rackmap.shown') || 'null');
 		if (Array.isArray(shn)) { state.shown = shn; }
 	} catch (e) { /* ignore */ }
+
+	state.faces = {};
+	try {
+		var fcs = JSON.parse(localStorage.getItem('rackmap.faces') || 'null');
+		if (fcs && typeof fcs === 'object') { state.faces = fcs; }
+	} catch (e) { /* ignore */ }
+
+	function saveFaces() {
+		try { localStorage.setItem('rackmap.faces', JSON.stringify(state.faces)); } catch (e) { /* ignore */ }
+	}
+
+	/** Faces affichées d'une baie : 'f' avant (défaut), 'r' arrière, 'fr' les deux côte à côte. -> [0], [1] ou [0, 1] */
+	function facesOf(r) {
+		var v = state.faces[String(r.id)] || 'f';
+		return v === 'fr' ? [0, 1] : (v === 'r' ? [1] : [0]);
+	}
 
 	function saveShown() {
 		try {
@@ -572,12 +588,23 @@
 					ss.style.flex = 'none';
 					bar.appendChild(ss);
 				}
+				styleSelect(bar);
 				html('label', {}, L.racks + ' :', bar);
 				racksAll.filter(function (r) { return !state.site || r.site === state.site; }).forEach(function (r) {
 					var lab = html('label', {style: 'display:inline-flex;gap:5px;align-items:center;cursor:pointer;border:1px solid rgba(127,127,127,.4);border-radius:999px;padding:2px 10px'}, undefined, bar);
 					var cbx = html('input', {type: 'checkbox'}, undefined, lab);
 					cbx.checked = shown.indexOf(r.id) >= 0;
 					html('span', {}, r.name, lab);
+					if (cbx.checked) {
+						var fs = select([['f', L.face_front], ['r', L.face_rear], ['fr', L.face_both]], state.faces[String(r.id)] || 'f', function (v) {
+							state.faces[String(r.id)] = v;
+							saveFaces();
+							render();
+						});
+						fs.style.cssText = 'flex:none;padding:0 4px;font-size:12px;min-height:0;height:22px';
+						fs.addEventListener('click', function (ev) { ev.stopPropagation(); });
+						lab.appendChild(fs);
+					}
 					cbx.addEventListener('change', function () {
 						var ids = shown.filter(function (x) { return x !== r.id; });
 						if (cbx.checked) { ids.push(r.id); }
@@ -627,6 +654,15 @@
 		}
 
 		zoomControls(bar, null);
+		html('label', {}, L.face_view + ' :', bar);
+		var fe = select([['f', L.face_front], ['r', L.face_rear], ['fr', L.face_both]], state.faces[String(edit.rack.id)] || 'f', function (v) {
+			state.faces[String(edit.rack.id)] = v;
+			saveFaces();
+			render();
+		});
+		fe.style.flex = 'none';
+		bar.appendChild(fe);
+		styleSelect(bar);
 		button(L.save, '', save, bar);
 		button(L.cancel, 'btn-alt', function () { state.edit = null; render(); }, bar);
 		if (edit.rack.id > 0) { button(L.delete_rack, 'btn-alt', deleteRack, bar); }
@@ -702,29 +738,89 @@
 
 	function grad(parent, id, stops, x2, y2) {
 		var g = el('linearGradient', {id: id, x1: 0, y1: 0, x2: x2, y2: y2}, parent);
-		stops.forEach(function (s) { el('stop', {offset: s[0], 'stop-color': s[1]}, g); });
+		stops.forEach(function (s) { el('stop', {offset: s[0], 'stop-color': s[1], 'stop-opacity': s.length > 2 ? s[2] : 1}, g); });
 	}
 
+	var FONT = "-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+	var MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+	// façades avant : couleur par type (clair -> foncé), arrière : tôle galvanisée claire
 	var FACE = {
-		server: ['#4d545e', '#2a2f36'], 'switch': ['#3d4c61', '#232c39'], router: ['#4b4560', '#2b2837'],
-		firewall: ['#5b4040', '#33252a'], patch: ['#4f5762', '#30363e'], pdu: ['#3e4a40', '#252d27'],
-		ups: ['#464a50', '#292c31'], storage: ['#3e4f56', '#243035'], other: ['#4a5058', '#2e3238']
+		server: ['#51627a', '#36445a'], 'switch': ['#2f73c4', '#1d4f93'], router: ['#7a58c9', '#563a9a'],
+		firewall: ['#c4435a', '#8c2a40'], patch: ['#8a97a9', '#68768a'], pdu: ['#3a8a63', '#296a4a'],
+		ups: ['#b8812f', '#87591c'], storage: ['#17999b', '#0f6f71'], other: ['#657285', '#4a5668']
 	};
+	var MESH = {};
 
 	function defsFor(svg) {
 		var d = el('defs', {}, svg);
 		Object.keys(FACE).forEach(function (t) {
-			grad(d, 'rm-f-' + t, [[0, FACE[t][0]], [0.12, FACE[t][0]], [1, FACE[t][1]]], 0, 1);
+			grad(d, 'rm-f-' + t, [[0, FACE[t][0]], [1, FACE[t][1]]], 1, 0.35);
 		});
-		grad(d, 'rm-rail', [[0, '#7c828b'], [0.45, '#c9ced5'], [1, '#6f757e']], 1, 0);
-		grad(d, 'rm-ear', [[0, '#707780'], [1, '#4a5058']], 0, 1);
-		grad(d, 'rm-body', [[0, '#1b1e23'], [1, '#101215']], 0, 1);
-		grad(d, 'rm-cap', [[0, '#5a6068'], [1, '#30353b']], 0, 1);
+		grad(d, 'rm-sheen', [[0, '#ffffff', .16], [0.22, '#ffffff', .03], [0.55, '#000000', 0], [1, '#000000', .22]], 0, 1);
+		grad(d, 'rm-plate', [[0, '#dfe4ea'], [1, '#b6bec9']], 0, 1);
+		grad(d, 'rm-plate-dark', [[0, '#2c3440'], [1, '#171c24']], 0, 1);
+		grad(d, 'rm-rail', [[0, '#1a1f27'], [0.5, '#262d38'], [1, '#171b22']], 1, 0);
+		grad(d, 'rm-ear', [[0, '#000000', .1], [1, '#000000', .3]], 0, 1);
+		grad(d, 'rm-body', [[0, '#141920'], [1, '#0b0e13']], 0, 1);
+		grad(d, 'rm-cap', [[0, '#313a47'], [1, '#1c222b']], 0, 1);
+		grad(d, 'rm-cage', [[0, '#e3e8ee'], [0.5, '#a3abb6'], [1, '#6a727d']], 0, 1);
+		grad(d, 'rm-tray', [[0, '#262c35'], [1, '#12161b']], 0, 1);
+		grad(d, 'rm-sock', [[0, '#050607'], [1, '#14171b']], 0, 1);
+		var pt = el('pattern', {id: 'rm-mesh', width: 5, height: 5, patternUnits: 'userSpaceOnUse'}, d);
+		el('circle', {cx: 2.5, cy: 2.5, r: .9, fill: '#1c2430', opacity: .5}, pt);
+		var bl = el('filter', {id: 'rm-blur', x: '-10%', y: '-30%', width: '120%', height: '170%'}, d);
+		el('feGaussianBlur', {stdDeviation: 2}, bl);
 		var f = el('filter', {id: 'rm-glow', x: '-80%', y: '-80%', width: '260%', height: '260%'}, d);
 		el('feGaussianBlur', {stdDeviation: 2.2, result: 'b'}, f);
 		var m = el('feMerge', {}, f);
 		el('feMergeNode', {'in': 'b'}, m);
 		el('feMergeNode', {'in': 'SourceGraphic'}, m);
+	}
+
+	/** Pictogramme de type (14x14) dessiné au trait. */
+	function typeIcon(g, type, x, y) {
+		var st = {fill: 'none', stroke: '#ffffff', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: .92};
+		var P = function (d2, extra) { el('path', Object.assign({d: d2}, st, extra || {}), g); };
+		var tr = function (px, py) { return [x + px, y + py]; };
+		if (type === 'server') {
+			el('rect', Object.assign({x: x, y: y + 1, width: 14, height: 5, rx: 1.5}, st), g);
+			el('rect', Object.assign({x: x, y: y + 8, width: 14, height: 5, rx: 1.5}, st), g);
+			el('circle', {cx: x + 3, cy: y + 3.5, r: .8, fill: '#fff'}, g); el('circle', {cx: x + 3, cy: y + 10.5, r: .8, fill: '#fff'}, g);
+		}
+		else if (type === 'switch') {
+			el('rect', Object.assign({x: x, y: y + 3, width: 14, height: 8, rx: 1.5}, st), g);
+			[3.2, 6, 8.8, 11.2].forEach(function (px) { el('rect', {x: x + px - .9, y: y + 7, width: 1.8, height: 2.2, fill: '#fff', opacity: .92}, g); });
+		}
+		else if (type === 'router') {
+			el('circle', Object.assign({cx: x + 7, cy: y + 7, r: 5.5}, st), g);
+			P('M' + (x + 7) + ',' + (y + 3) + ' V' + (y + 11) + ' M' + (x + 3) + ',' + (y + 7) + ' H' + (x + 11));
+		}
+		else if (type === 'firewall') {
+			P('M' + (x + 7) + ',' + (y + 1) + ' L' + (x + 13) + ',' + (y + 3.2) + ' V' + (y + 7) + ' C' + (x + 13) + ',' + (y + 10.5) + ' ' + (x + 10) + ',' + (y + 12.4) + ' ' + (x + 7) + ',' + (y + 13.4) + ' C' + (x + 4) + ',' + (y + 12.4) + ' ' + (x + 1) + ',' + (y + 10.5) + ' ' + (x + 1) + ',' + (y + 7) + ' V' + (y + 3.2) + ' Z');
+		}
+		else if (type === 'storage') {
+			el('ellipse', Object.assign({cx: x + 7, cy: y + 3, rx: 5.5, ry: 2}, st), g);
+			P('M' + (x + 1.5) + ',' + (y + 3) + ' V' + (y + 11) + ' C' + (x + 1.5) + ',' + (y + 13) + ' ' + (x + 12.5) + ',' + (y + 13) + ' ' + (x + 12.5) + ',' + (y + 11) + ' V' + (y + 3));
+			P('M' + (x + 1.5) + ',' + (y + 7) + ' C' + (x + 1.5) + ',' + (y + 9) + ' ' + (x + 12.5) + ',' + (y + 9) + ' ' + (x + 12.5) + ',' + (y + 7));
+		}
+		else if (type === 'ups') {
+			el('rect', Object.assign({x: x + 1, y: y + 3, width: 11, height: 8, rx: 1.5}, st), g);
+			el('rect', {x: x + 12, y: y + 5.5, width: 1.6, height: 3, rx: .6, fill: '#fff', opacity: .92}, g);
+			P('M' + (x + 7.2) + ',' + (y + 4.5) + ' L' + (x + 4.6) + ',' + (y + 7.4) + ' H' + (x + 7.6) + ' L' + (x + 5.8) + ',' + (y + 9.8));
+		}
+		else if (type === 'patch') {
+			[2.5, 7, 11.5].forEach(function (px) {
+				el('rect', Object.assign({x: x + px - 1.7, y: y + 4, width: 3.4, height: 6, rx: .8}, st), g);
+			});
+		}
+		else if (type === 'pdu') {
+			P('M' + (x + 4.5) + ',' + (y + 1) + ' V' + (y + 5) + ' M' + (x + 9.5) + ',' + (y + 1) + ' V' + (y + 5));
+			el('rect', Object.assign({x: x + 2.5, y: y + 5, width: 9, height: 4.5, rx: 1.6}, st), g);
+			P('M' + (x + 7) + ',' + (y + 9.5) + ' V' + (y + 13));
+		}
+		else {
+			el('rect', Object.assign({x: x + 1, y: y + 1, width: 12, height: 12, rx: 2.5}, st), g);
+		}
 	}
 
 	function fmtBps(v) {
@@ -755,6 +851,19 @@
 
 	function sfpCount(d) {
 		return sfpGroups(d).reduce(function (t, g) { return t + g.n; }, 0);
+	}
+
+	/** Face (0 avant, 1 arrière) où sont les ports RJ45/SFP d'un équipement (le patch panel en a des deux côtés). */
+	function portFace(d) { return d && d.port_face === 1 ? 1 : 0; }
+
+	/** Clé d'un équipement sur une face : les ports de l'avant et de l'arrière sont distincts. */
+	function pk(id, face) { return id + ':' + (face ? 1 : 0); }
+
+	/** Face du port d'une extrémité de câble : choisie pour un patch panel, imposée par l'équipement sinon. */
+	function endFace(l, side) {
+		var d = deviceById(side === 'a' ? l.a : l.b);
+		if (!d) { return 0; }
+		return d.type === 'patch' ? ((side === 'a' ? l.a_face : l.b_face) === 1 ? 1 : 0) : portFace(d);
 	}
 
 	var SFP_COLOR = {1: '#9aa3ad', 10: '#46c3d6', 25: '#4a90d9', 40: '#8e6bd1', 100: '#e0a21e', 200: '#e07a3a', 400: '#e0457b'};
@@ -788,14 +897,14 @@
 		var W = widthOf(rows, k), ph2 = 8, x0 = xr - W;
 		var blockH = rows * ph2 + (rows - 1) * gap, y0 = y + (h - blockH) / 2 + (sfp ? 2 : 0);
 
-		el('rect', {x: x0 - 4, y: y0 - 3 - (sfp ? 6 : 0), width: W + 8, height: blockH + 6 + (sfp ? 6 : 0), rx: 2, fill: '#15181c', opacity: .55}, g);
+		el('rect', {x: x0 - 4, y: y0 - 3 - (sfp ? 6 : 0), width: W + 8, height: blockH + 6 + (sfp ? 6 : 0), rx: 3, fill: '#0e131a', opacity: .88}, g);
 
 		var cx = x0;
 		groups.forEach(function (gr) {
 			var gw = Math.ceil(gr.count / rows) * (gr.pw * k + gap * k) - gap * k;
 			var speed = gr.speed;
 			if (gr.kind === 'sfp') {
-				var lab = el('text', {x: cx + gw / 2, y: y0 - 2.5, 'text-anchor': 'middle', 'font-size': 6.5, 'font-weight': 700, fill: SFP_COLOR[speed] || '#aab1bb'}, g);
+				var lab = el('text', {x: cx + gw / 2, y: y0 - 2.5, 'text-anchor': 'middle', 'font-size': 6.5, 'font-weight': 700, 'font-family': FONT, fill: SFP_COLOR[speed] || '#aab1bb'}, g);
 				lab.textContent = (speed || 10) + 'G';
 			}
 			for (var i = 0; i < gr.count; i++) {
@@ -804,12 +913,15 @@
 				if (reg) { reg(idx, px + pw / 2, py + ph2 / 2); }
 				if (gr.kind === 'sfp') {
 					var sc = SFP_COLOR[speed] || '#aab1bb';
-					el('rect', {x: px, y: py, width: pw, height: ph2, rx: 1.2, fill: '#0a0b0d', stroke: '#c3c9d1', 'stroke-width': .8}, g);
-					el('rect', {x: px + 1.5, y: py + ph2 - 3, width: pw - 3, height: 1.6, fill: sc, opacity: .9}, g);
+					el('rect', {x: px, y: py, width: pw, height: ph2, rx: 1.4, fill: 'url(#rm-cage)', stroke: '#1b1e23', 'stroke-width': .6}, g);
+					el('rect', {x: px + 1.3, y: py + 1.3, width: pw - 2.6, height: ph2 - 2.6, rx: .8, fill: 'url(#rm-sock)'}, g);
+					el('rect', {x: px + 2, y: py + ph2 - 3.1, width: pw - 4, height: 1.5, rx: .7, fill: sc}, g);
 				}
 				else {
-					el('rect', {x: px, y: py, width: pw, height: ph2, rx: 1, fill: '#0c0e10', stroke: '#8c939c', 'stroke-width': .6}, g);
-					el('rect', {x: px + 2 * k, y: py + ph2 - 3, width: pw - 4 * k, height: 2, fill: '#c9a43a', opacity: .75}, g);
+					el('rect', {x: px, y: py, width: pw, height: ph2, rx: 1.3, fill: '#5d6671'}, g);
+					el('rect', {x: px + .7, y: py + .7, width: pw - 1.4, height: ph2 - 1.4, rx: 1, fill: 'url(#rm-sock)'}, g);
+					el('rect', {x: px + pw * .3, y: py + .7, width: pw * .4, height: 1.5, rx: .6, fill: '#262b31'}, g);
+					el('rect', {x: px + 2 * k, y: py + ph2 - 2.9, width: pw - 4 * k, height: 1.6, rx: .5, fill: '#d4b04a', opacity: .85}, g);
 				}
 				if (used[idx]) { el('rect', {x: px + 1, y: py + 1.2, width: Math.max(2, pw - 2), height: 2.4, rx: 1, fill: used[idx], filter: 'url(#rm-glow)'}, g); }
 			}
@@ -887,16 +999,64 @@
 		var W = cols * (bw + gap) - gap, x0 = x1 - W;
 		for (var i = 0; i < n; i++) {
 			var bx = x0 + (i % cols) * (bw + gap), by = (vert ? y + 6 : top0) + Math.floor(i / cols) * (bh + gap);
-			el('rect', {x: bx, y: by, width: bw, height: bh, rx: 2, fill: '#14171a', stroke: '#6c737c', 'stroke-width': .8}, g);
-			if (vert) { el('rect', {x: bx + bw / 2 - 1, y: by + 5, width: 2, height: Math.max(2, bh - 10), rx: 1, fill: '#2c3238'}, g); }
-			else { el('rect', {x: bx + 2, y: by + bh / 2 - 1, width: bw - 4, height: 2, rx: 1, fill: '#2c3238'}, g); }
-			if (bw >= 8) { el('circle', {cx: bx + 3.5, cy: by + 3.5, r: 1.2, fill: '#46c37b'}, g); }
+			el('rect', {x: bx, y: by, width: bw, height: bh, rx: 2.4, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': .9}, g);
+			el('rect', {x: bx + .8, y: by + .8, width: bw - 1.6, height: bh - 1.6, rx: 1.8, fill: 'none', stroke: '#fff', 'stroke-opacity': .09, 'stroke-width': .8}, g);
+			if (vert) { el('rect', {x: bx + bw / 2 - 1, y: by + 6, width: 2, height: Math.max(2, bh - 12), rx: 1, fill: '#090b0d'}, g); }
+			else { el('rect', {x: bx + 5, y: by + bh / 2 - 1, width: bw - 10, height: 2, rx: 1, fill: '#090b0d'}, g); }
+			if (bw >= 8) { el('circle', {cx: bx + 3.4, cy: by + 3.4, r: 1.15, fill: '#4ade80'}, g); }
 		}
 		return W + 10;
 	}
 
+	/** Patch panel : ports RJ45 ou fibre (LC duplex). À l'arrière la numérotation est en miroir (le port n est derrière le port n de l'avant). */
+	function patchPorts(g, d, x1, y, h, used, reg, fw, rear) {
+		var pn = Math.min(d.ports || 24, 96), fib = d.pp_media === 1, unit = fib ? 14 : 11;
+		var W0 = pn * unit + Math.floor((pn - 1) / 6) * 3, kk = Math.max(0.4, Math.min(1, (fw - 80) / W0));
+		var pw = (unit - 2) * kk, gap = 2 * kk, gx = 3 * kk, W = pn * (pw + gap) + Math.floor((pn - 1) / 6) * gx, px0 = x1 - W;
+		var ph = Math.min(11, h - 16);
+		for (var i = 0; i < pn; i++) {
+			var pos = rear ? pn - 1 - i : i;
+			var px = px0 + pos * (pw + gap) + Math.floor(pos / 6) * gx;
+			if (reg) { reg(i, px + pw / 2, y + 12 + ph / 2); }
+			if (kk > 0.7 || (i + 1) % 6 === 0) {
+				var tn = el('text', {x: px + pw / 2, y: y + 9, 'text-anchor': 'middle', 'font-size': 5, 'font-family': FONT, fill: rear ? (rearTheme() === 'light' ? '#475569' : '#d5dce8') : '#eef1f5', opacity: .9}, g);
+				tn.textContent = i + 1;
+			}
+			if (fib) {
+				el('rect', {x: px, y: y + 12, width: pw, height: ph, rx: 1.4, fill: '#7c8590', stroke: '#1b1e23', 'stroke-width': .5}, g);
+				[0, 1].forEach(function (s2) {
+					el('rect', {x: px + pw * (s2 ? .54 : .1), y: y + 13.2, width: pw * .36, height: ph - 2.4, rx: .9, fill: 'url(#rm-sock)'}, g);
+					el('circle', {cx: px + pw * (s2 ? .72 : .28), cy: y + 12 + ph / 2, r: Math.max(.7, pw * .07), fill: '#46c3d6', opacity: .85}, g);
+				});
+			}
+			else {
+				el('rect', {x: px, y: y + 12, width: pw, height: ph, rx: 1.2, fill: '#5d6671'}, g);
+				el('rect', {x: px + .6, y: y + 12.6, width: pw - 1.2, height: ph - 1.2, rx: .9, fill: 'url(#rm-sock)'}, g);
+			}
+			if (used[i]) { el('rect', {x: px + 1.5, y: y + 13, width: pw - 3, height: 2.4, rx: 1, fill: used[i], filter: 'url(#rm-glow)'}, g); }
+		}
+		return W + 8;
+	}
+
+	/** Prises d'un bloc multiprise (PDU). */
+	function pduBlock(g, d, x1, y, h, used, reg, fw) {
+		var on = Math.min(d.ports || 8, 16), ow = Math.max(8, Math.min(24, (fw - 90) / on - 4));
+		for (var k = 0; k < on; k++) {
+			var ox = x1 - (on - k) * (ow + 4) + 4;
+			el('rect', {x: ox, y: y + 6, width: ow, height: h - 12, rx: 4, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': .9}, g);
+			[0, 1].forEach(function (s2) {
+				el('rect', {x: ox + ow * 0.25 + s2 * ow / 3, y: y + h / 2 - 4, width: 2.4, height: 8, rx: 1, fill: '#c9a43a'}, g);
+			});
+			if (reg) { reg(k, ox + ow / 2, y + h / 2); }
+			if (used[k]) { el('circle', {cx: ox + ow - 4, cy: y + 9, r: 1.8, fill: used[k], filter: 'url(#rm-glow)'}, g); }
+		}
+		return on * (ow + 4) + 6;
+	}
+
 	function drawFace(g, d, x1, y, h, used, reg, fw) {
 		var n = d.ports || 0, sg = sfpGroups(d), t = d.type, w = 0, half = d.slot > 0;
+		var pf = t === 'patch' || portFace(d) === 0;
+		if (!pf) { n = 0; sg = []; }
 		fw = fw || 410;
 		var room = Math.min(110, fw * 0.3);
 		var nport = n + sg.reduce(function (t, x) { return t + x.n; }, 0);
@@ -904,8 +1064,9 @@
 
 		if (t === 'server') {
 			w = diskBlock(g, x1 - 26, y, h, d, bayMax) + 26;
-			el('circle', {cx: x1 - 10, cy: y + h / 2, r: 5.5, fill: '#1c1f23', stroke: '#aab1bb', 'stroke-width': 1}, g);
-			el('rect', {x: x1 - 10.6, y: y + h / 2 - 3.6, width: 1.2, height: 3.6, fill: '#aab1bb'}, g);
+			el('circle', {cx: x1 - 10, cy: y + h / 2, r: 5.6, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': 1}, g);
+			el('path', {d: 'M' + (x1 - 12.2) + ',' + (y + h / 2 - 1.8) + ' A3.1,3.1 0 1 0 ' + (x1 - 7.8) + ',' + (y + h / 2 - 1.8), fill: 'none', stroke: '#9aa3ae', 'stroke-width': 1, 'stroke-linecap': 'round'}, g);
+			el('rect', {x: x1 - 10.5, y: y + h / 2 - 4, width: 1, height: 3.6, rx: .5, fill: '#9aa3ae'}, g);
 		}
 		else if (t === 'switch' || t === 'router' || t === 'firewall') {
 			w = portBlock(g, x1, y, h, n, sg, used, reg, fw - room);
@@ -914,44 +1075,34 @@
 			w = diskBlock(g, x1, y, h, d, bayMax);
 		}
 		else if (t === 'ups') {
-			el('rect', {x: x1 - 84, y: y + 7, width: 70, height: Math.min(h - 14, 32), rx: 3, fill: '#13281b', stroke: '#0a150e', 'stroke-width': 1.5}, g);
+			el('rect', {x: x1 - 84, y: y + 7, width: 70, height: Math.min(h - 14, 32), rx: 3, fill: '#0f2418', stroke: '#050a07', 'stroke-width': 1.5}, g);
 			for (var b = 0; b < 5; b++) {
 				el('rect', {x: x1 - 78 + b * 12, y: y + 13, width: 8, height: Math.min(h - 26, 20), fill: '#46c37b', opacity: .85 - b * .12}, g);
 			}
-			el('circle', {cx: x1 - 100, cy: y + h / 2, r: 7, fill: '#1c1f23', stroke: '#aab1bb', 'stroke-width': 1}, g);
+			el('circle', {cx: x1 - 100, cy: y + h / 2, r: 7, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': 1}, g);
 			w = 112;
 		}
 		else if (t === 'patch') {
-			var pn = Math.min(n || 24, 96), W0 = pn * 11 + Math.floor((pn - 1) / 6) * 3, kk = Math.max(0.4, Math.min(1, (fw - 80) / W0));
-			var pw = 9 * kk, gap = 2 * kk, gx = 3 * kk, W = pn * (pw + gap) + Math.floor((pn - 1) / 6) * gx, px0 = x1 - W;
-			for (var i = 0; i < pn; i++) {
-				var px = px0 + i * (pw + gap) + Math.floor(i / 6) * gx;
-				if (reg) { reg(i, px + pw / 2, y + 12 + Math.min(11, h - 16) / 2); }
-				if (kk > 0.7 || (i + 1) % 6 === 0) {
-					var tn = el('text', {x: px + pw / 2, y: y + 9, 'text-anchor': 'middle', 'font-size': 5, fill: '#aab1bb'}, g);
-					tn.textContent = i + 1;
-				}
-				el('rect', {x: px, y: y + 12, width: pw, height: Math.min(11, h - 16), rx: 1, fill: '#0c0e10', stroke: '#8c939c', 'stroke-width': .6}, g);
-				if (used[i]) { el('rect', {x: px + 1.5, y: y + 13, width: pw - 3, height: 2.4, rx: 1, fill: used[i], filter: 'url(#rm-glow)'}, g); }
-			}
-			w = W + 8;
+			w = patchPorts(g, d, x1, y, h, used, reg, fw, false);
 		}
 		else if (t === 'pdu') {
-			var on = Math.min(n || 8, 16), ow = Math.max(8, Math.min(24, (fw - 90) / on - 4));
-			for (var k = 0; k < on; k++) {
-				var ox = x1 - (on - k) * (ow + 4) + 4;
-				el('rect', {x: ox, y: y + 6, width: ow, height: h - 12, rx: 4, fill: '#15181b', stroke: '#8c939c', 'stroke-width': .8}, g);
-				[0, 1].forEach(function (s) {
-					el('rect', {x: ox + ow * 0.25 + s * ow / 3, y: y + h / 2 - 4, width: 2.4, height: 8, rx: 1, fill: '#c9a43a'}, g);
-				});
-				if (reg) { reg(k, ox + ow / 2, y + h / 2); }
-				if (used[k]) { el('circle', {cx: ox + ow - 4, cy: y + 9, r: 1.8, fill: used[k], filter: 'url(#rm-glow)'}, g); }
+			if (pf) { w = pduBlock(g, d, x1, y, h, used, reg, fw); }
+			else {
+				el('rect', {x: x1 - 44, y: y + 8, width: 34, height: h - 16, rx: 3, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': .9}, g);
+				el('circle', {cx: x1 - 27, cy: y + h / 2, r: 4.2, fill: '#07080a', stroke: '#6f7782', 'stroke-width': .8}, g);
+				w = 52;
 			}
-			w = on * (ow + 4) + 6;
 		}
 		else {
 			for (var v = 0; v < 6; v++) { el('rect', {x: x1 - 70 + v * 11, y: y + 8, width: 6, height: h - 16, rx: 3, fill: '#15181b'}, g); }
 			w = 76;
+		}
+
+		if (!pf && (t === 'switch' || t === 'router' || t === 'firewall')) {
+			for (var lq = 0; lq < 8; lq++) {
+				el('circle', {cx: x1 - 8 - lq * 9, cy: y + h / 2, r: 1.5, fill: lq < 2 ? '#4ade80' : '#2b323a'}, g);
+			}
+			w = 82;
 		}
 
 		if ((t === 'server' || t === 'storage' || t === 'other') && (n > 0 || sg.length)) {
@@ -964,46 +1115,181 @@
 		return w;
 	}
 
-	function drawDevice(svg, d, x, y, w, h, color, st, tipText, selected, used, reg) {
-		var EAR = 16;
+	/** Bloc d'alimentation (PSU) vu de l'arrière : grille de ventilation + prise C14 + voyant. */
+	function psuModule(g, x, y, w, h) {
+		el('rect', {x: x, y: y, width: w, height: h, rx: 3, fill: 'url(#rm-tray)', stroke: '#07080a', 'stroke-width': .9}, g);
+		el('rect', {x: x + .8, y: y + .8, width: w - 1.6, height: h - 1.6, rx: 2.4, fill: 'none', stroke: '#fff', 'stroke-opacity': .08}, g);
+		var bars = Math.max(2, Math.floor((h - 8) / 5));
+		for (var i = 0; i < bars; i++) {
+			el('rect', {x: x + 4, y: y + 4 + i * ((h - 8) / bars), width: w * .36, height: Math.max(1.4, (h - 8) / bars - 1.8), rx: .7, fill: '#07080a'}, g);
+		}
+		var iw = w * .42, ih = Math.min(h - 12, 15), ix = x + w - iw - 4, iy = y + (h - ih) / 2;
+		el('rect', {x: ix, y: iy, width: iw, height: ih, rx: 2, fill: '#0b0d10', stroke: '#59616c', 'stroke-width': .7}, g);
+		[.28, .5, .72].forEach(function (f) { el('rect', {x: ix + iw * f - .9, y: iy + 3, width: 1.8, height: ih - 6, rx: .6, fill: '#b8924a'}, g); });
+		el('circle', {cx: x + w - 4.5, cy: y + 4.5, r: 1.3, fill: '#4ade80'}, g);
+	}
+
+	function fanModule(g, x, y, w, h) {
+		el('rect', {x: x, y: y, width: w, height: h, rx: 3, fill: 'url(#rm-tray)', stroke: '#07080a', 'stroke-width': .9}, g);
+		var r = Math.min(w, h) / 2 - 3.5, cx = x + w / 2, cy = y + h / 2;
+		el('circle', {cx: cx, cy: cy, r: r, fill: '#07080a', stroke: '#3a4048', 'stroke-width': .8}, g);
+		[0, 45, 90, 135].forEach(function (a) {
+			var dx = Math.cos(a * Math.PI / 180) * (r - 1), dy = Math.sin(a * Math.PI / 180) * (r - 1);
+			el('line', {x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, stroke: '#2a3037', 'stroke-width': 1}, g);
+		});
+		el('circle', {cx: cx, cy: cy, r: Math.max(1.6, r * .28), fill: '#1b1f24', stroke: '#454c56', 'stroke-width': .6}, g);
+	}
+
+	/** Connecteurs de gestion d'un serveur : VGA, USB, RJ45 de supervision. */
+	function ioBlock(g, xr, y, h) {
+		var x0 = xr - 46, cy = y + h / 2;
+		el('rect', {x: x0, y: cy - 4, width: 15, height: 8, rx: 1.5, fill: '#2f6fb5', stroke: '#0a0c0f', 'stroke-width': .6}, g);
+		[0, 1].forEach(function (k) { el('rect', {x: x0 + 19 + k * 9, y: cy - 3, width: 7, height: 6, rx: 1, fill: '#0b0d10', stroke: '#59616c', 'stroke-width': .6}, g); });
+		el('rect', {x: x0 + 37, y: cy - 4, width: 9, height: 8, rx: 1.2, fill: '#5d6671'}, g);
+		el('rect', {x: x0 + 37.6, y: cy - 3.4, width: 7.8, height: 6.8, rx: .9, fill: 'url(#rm-sock)'}, g);
+		return 52;
+	}
+
+	/** Contenu de la face arrière d'un équipement (alimentations, ventilateurs, ports). Retourne la largeur occupée à droite. */
+	function drawRear(g, d, x1, y, h, used, reg, fw) {
+		var t = d.type, w = 0, pf = portFace(d) === 1, n = pf ? (d.ports || 0) : 0, sg = pf ? sfpGroups(d) : [];
+		var ph = Math.max(14, Math.min(h - 10, 42)), py = y + (h - ph) / 2;
+
+		if (t === 'patch') { return patchPorts(g, d, x1, y, h, used, reg, fw, true); }
+
+		if (t === 'pdu') {
+			if (pf) { return pduBlock(g, d, x1, y, h, used, reg, fw); }
+			el('rect', {x: x1 - 44, y: y + 8, width: 34, height: h - 16, rx: 3, fill: 'url(#rm-tray)', stroke: '#0a0c0f', 'stroke-width': .9}, g);
+			el('circle', {cx: x1 - 27, cy: y + h / 2, r: 4.2, fill: '#07080a', stroke: '#6f7782', 'stroke-width': .8}, g);
+			return 52;
+		}
+
+		if (t === 'ups') {
+			for (var o = 0; o < 6; o++) {
+				var ox = x1 - 28 * (6 - o) + 4;
+				el('rect', {x: ox, y: y + 7, width: 22, height: Math.min(h - 14, 30), rx: 3, fill: '#0b0d10', stroke: '#59616c', 'stroke-width': .7}, g);
+				[.3, .7].forEach(function (f) { el('rect', {x: ox + 22 * f - .9, y: y + 12, width: 1.8, height: 6, rx: .6, fill: '#b8924a'}, g); });
+			}
+			w = 28 * 6 + 8;
+		}
+		else {
+			var big = fw >= 330, pw = Math.min(58, Math.max(34, fw * (big ? .12 : .17)));
+			var count = big ? 2 : 1;
+			if (t === 'router' || t === 'firewall' || t === 'switch') { count = big ? 2 : 1; }
+			for (var i = 0; i < count; i++) { w += pw + 4; psuModule(g, x1 - w + 4, py, pw, ph); }
+			w += 6;
+		}
+
+		if (n > 0 || sg.length) { w += portBlock(g, x1 - w, y, h, n, sg, used, reg, Math.max(40, fw - 130 - w)); }
+
+		var rem = fw - 130 - w;
+		if (t === 'server' && rem >= 52) { w += ioBlock(g, x1 - w, y, h); rem -= 52; }
+		if ((t === 'storage' || t === 'switch' || t === 'router' || t === 'firewall' || t === 'other') && rem >= 38) {
+			var fc = Math.min(t === 'storage' ? 3 : 2, Math.floor(rem / 38));
+			for (var f = 0; f < fc; f++) { w += 38; fanModule(g, x1 - w + 4, py, 34, ph); }
+		}
+		return w;
+	}
+
+	function drawDeviceRear(svg, d, x, y, w, h, color, tipText, selected, used, reg) {
 		var g = el('g', {style: state.edit ? 'cursor:grab' : 'cursor:pointer'}, svg);
 		el('title', {}, g).textContent = tipText;
+		var ft = FACE[d.type] ? d.type : 'other', RT = rearTheme(), lightP = RT === 'light';
 
-		el('rect', {x: x, y: y + .5, width: w, height: h - 1, rx: 2, fill: 'url(#rm-f-' + (FACE[d.type] ? d.type : 'other') + ')',
-			stroke: '#0e1013', 'stroke-width': 1}, g);
-		el('rect', {x: x + EAR, y: y + 1.5, width: w - 2 * EAR, height: 1, fill: '#fff', opacity: .14}, g);
+		// tôle galvanisée perforée, avec un liseré de la couleur du type pour retrouver l'équipement
+		el('rect', {x: x + 1, y: y + 3.5, width: w - 2, height: h - 2, rx: 6, fill: '#000', opacity: .5, filter: 'url(#rm-blur)'}, g);
+		el('rect', {x: x, y: y + 1, width: w, height: h - 2, rx: 6, fill: RT === 'color' ? 'url(#rm-f-' + ft + ')' : (RT === 'dark' ? 'url(#rm-plate-dark)' : 'url(#rm-plate)')}, g);
+		if (d.type !== 'patch') { el('rect', {x: x + 2, y: y + 2, width: w - 4, height: h - 4, fill: 'url(#rm-mesh)', opacity: lightP ? .35 : (RT === 'color' ? .22 : .6)}, g); }
+		el('rect', {x: x, y: y + 1, width: w, height: h - 2, rx: 6, fill: 'url(#rm-sheen)', opacity: lightP ? .55 : .9}, g);
+		el('rect', {x: x + .5, y: y + 1.5, width: w - 1, height: h - 3, rx: 5.6, fill: 'none', stroke: '#1b2230', 'stroke-opacity': .55, 'stroke-width': 1}, g);
+		el('rect', {x: x + 1.5, y: y + 2.5, width: w - 3, height: h - 5, rx: 4.8, fill: 'none', stroke: '#fff', 'stroke-opacity': lightP ? .5 : .14, 'stroke-width': 1}, g);
+		el('rect', {x: x + 8, y: y + 1, width: w - 16, height: 3, rx: 1.5, fill: RT === 'color' ? '#ffffff' : FACE[ft][0], opacity: RT === 'color' ? .35 : 1}, g);
+		[[x + 8, y + 8], [x + w - 8, y + 8], [x + 8, y + h - 8], [x + w - 8, y + h - 8]].forEach(function (c) {
+			el('circle', {cx: c[0], cy: c[1], r: 1.8, fill: '#8f98a5', stroke: '#5b6573', 'stroke-width': .6}, g);
+		});
 
+		el('rect', {x: x + 14, y: y + 9, width: 3, height: h - 18, rx: 1.5, fill: color, stroke: '#1b2230', 'stroke-opacity': .4, 'stroke-width': .6}, g);
+
+		var reserved = drawRear(g, d, x + w - 12, y, h, used || {}, reg, w - 28);
+
+		var nx = x + 24, avail = (x + w - 12) - nx - reserved - 6;
+		var maxc = Math.max(3, Math.floor(avail / 6.8));
+		var label = d.name.length > maxc ? d.name.slice(0, Math.max(1, maxc - 1)) + '\u2026' : d.name;
+		var ny = y + (d.u_height > 1 ? 21 : UH / 2 + 4);
+		var halo = el('text', {x: nx, y: ny, 'font-size': 12, 'font-weight': 600, 'font-family': FONT, fill: lightP ? '#ffffff' : '#07080a', stroke: lightP ? '#ffffff' : '#07080a', 'stroke-width': 3, 'stroke-linejoin': 'round', opacity: lightP ? .55 : .35}, g);
+		halo.textContent = label;
+		var tx = el('text', {x: nx, y: ny, 'font-size': 12, 'font-weight': 600, 'font-family': FONT, fill: lightP ? '#1c2433' : '#f2f5fa'}, g);
+		tx.textContent = label;
+		if (d.u_height > 1) {
+			var tl = (L['t_' + d.type] || '').toUpperCase();
+			if (tl) {
+				el('rect', {x: nx, y: y + 27, width: tl.length * 6.1 + 9, height: 12, rx: 6, fill: RT === 'color' ? '#00000055' : FACE[ft][1]}, g);
+				var tg = el('text', {x: nx + 4.5, y: y + 36, 'font-size': 8.2, 'font-weight': 600, 'font-family': FONT, fill: '#ffffff', 'letter-spacing': '.09em'}, g);
+				tg.textContent = tl;
+			}
+		}
+
+		if (selected) {
+			el('rect', {x: x - 1, y: y - .5, width: w + 2, height: h + 1, rx: 7, fill: 'none', stroke: '#ffffff', 'stroke-width': 2.2}, g);
+		}
+		return g;
+	}
+
+	function drawDevice(svg, d, x, y, w, h, color, st, tipText, selected, used, reg, face) {
+		if (face === 1) { return drawDeviceRear(svg, d, x, y, w, h, color, tipText, selected, used, reg); }
+		var EAR = 15;
+		var g = el('g', {style: state.edit ? 'cursor:grab' : 'cursor:pointer'}, svg);
+		el('title', {}, g).textContent = tipText;
+		var ft = FACE[d.type] ? d.type : 'other';
+
+		// ombre portée, façade colorée, reflet
+		el('rect', {x: x + 1, y: y + 3.5, width: w - 2, height: h - 2, rx: 6, fill: '#000', opacity: .5, filter: 'url(#rm-blur)'}, g);
+		el('rect', {x: x, y: y + 1, width: w, height: h - 2, rx: 6, fill: 'url(#rm-f-' + ft + ')'}, g);
+		el('rect', {x: x, y: y + 1, width: w, height: h - 2, rx: 6, fill: 'url(#rm-sheen)'}, g);
+		el('rect', {x: x + .5, y: y + 1.5, width: w - 1, height: h - 3, rx: 5.6, fill: 'none', stroke: '#000', 'stroke-opacity': .35, 'stroke-width': 1}, g);
+		el('rect', {x: x + 1.5, y: y + 2.5, width: w - 3, height: h - 5, rx: 4.8, fill: 'none', stroke: '#fff', 'stroke-opacity': .16, 'stroke-width': 1}, g);
+
+		// oreilles : bandes plus sombres avec fentes oblongues
 		[0, 1].forEach(function (side) {
 			var ex = side ? x + w - EAR : x;
-			el('rect', {x: ex, y: y + .5, width: EAR, height: h - 1, rx: 2, fill: 'url(#rm-ear)', stroke: '#0e1013', 'stroke-width': .8}, g);
+			el('rect', {x: ex, y: y + 1, width: EAR, height: h - 2, rx: 6, fill: 'url(#rm-ear)'}, g);
+			el('rect', {x: side ? ex : ex + EAR - 1, y: y + 4, width: 1, height: h - 8, fill: '#000', opacity: .3}, g);
 			for (var u = 0; u < d.u_height; u++) {
 				[.27, .73].forEach(function (f) {
-					el('circle', {cx: ex + EAR / 2, cy: y + u * UH + UH * f, r: 1.9, fill: '#16191d', stroke: '#a3a9b1', 'stroke-width': .6}, g);
+					el('rect', {x: ex + EAR / 2 - 2.4, y: y + u * UH + UH * f - 2.8, width: 4.8, height: 5.6, rx: 2.4, fill: '#0b0e13', opacity: .85}, g);
 				});
 			}
 		});
 
-		el('rect', {x: x + EAR - 3, y: y + 3, width: 3, height: h - 6, rx: 1.5, fill: color}, g);
-		el('circle', {cx: x + w - EAR / 2, cy: y + h / 2, r: 3.6, fill: color, filter: 'url(#rm-glow)'}, g);
+		// voyant d'état : barre à gauche + LED vitrée à droite
+		el('rect', {x: x + EAR + 2, y: y + 6, width: 3, height: h - 12, rx: 1.5, fill: color, stroke: '#000', 'stroke-opacity': .3, 'stroke-width': .6}, g);
+		el('circle', {cx: x + w - EAR / 2, cy: y + h / 2, r: 4.4, fill: '#07080a'}, g);
+		el('circle', {cx: x + w - EAR / 2, cy: y + h / 2, r: 3.1, fill: color, filter: 'url(#rm-glow)'}, g);
+		el('circle', {cx: x + w - EAR / 2 - .9, cy: y + h / 2 - 1, r: 1, fill: '#fff', opacity: .55}, g);
 
 		var reserved = drawFace(g, d, x + w - EAR - 8, y, h, used || {}, reg, w - 2 * EAR - 18);
 
-		var nx = x + EAR + 10, avail = (x + w - EAR - 8) - nx - reserved - 6;
-		var maxc = Math.max(3, Math.floor(avail / 7.6));
-		var label = d.name.length > maxc ? d.name.slice(0, Math.max(1, maxc - 1)) + '…' : d.name;
-		var ny = y + (d.u_height > 1 ? 20 : UH / 2 + 4.5);
-		var halo = el('text', {x: nx, y: ny, 'font-size': 12.5, 'font-weight': 700, fill: '#15181c', stroke: '#15181c',
-			'stroke-width': 3.5, 'stroke-linejoin': 'round', opacity: .8}, g);
+		var ix = x + EAR + 12, half = d.slot > 0, nx = half ? ix : ix + 20, avail = (x + w - EAR - 8) - nx - reserved - 6;
+		var maxc = Math.max(3, Math.floor(avail / 6.9));
+		var label = d.name.length > maxc ? d.name.slice(0, Math.max(1, maxc - 1)) + '\u2026' : d.name;
+		var ny = y + (d.u_height > 1 ? 21 : UH / 2 + 4.5);
+		if (!half) { typeIcon(g, ft, ix, ny - 11.5); }
+		var halo = el('text', {x: nx, y: ny, 'font-size': 12.5, 'font-weight': 600, 'font-family': FONT, fill: '#07080a', stroke: '#07080a',
+			'stroke-width': 3, 'stroke-linejoin': 'round', opacity: .35}, g);
 		halo.textContent = label;
-		var tx = el('text', {x: nx, y: ny, 'font-size': 12.5, 'font-weight': 700, fill: '#f4f6f8'}, g);
+		var tx = el('text', {x: nx, y: ny, 'font-size': 12.5, 'font-weight': 600, 'font-family': FONT, fill: '#ffffff'}, g);
 		tx.textContent = label;
 		if (d.u_height > 1 && TYPE_LABEL[d.type] !== undefined) {
-			var tg = el('text', {x: nx, y: y + 34, 'font-size': 9.5, fill: '#aab1bb', 'letter-spacing': '.05em'}, g);
-			tg.textContent = (L['t_' + d.type] || '').toUpperCase();
+			var tl = (L['t_' + d.type] || '').toUpperCase();
+			if (tl) {
+				el('rect', {x: ix, y: y + 27, width: tl.length * 6.1 + 9, height: 12, rx: 6, fill: '#000', opacity: .28}, g);
+				var tg = el('text', {x: ix + 4.5, y: y + 36, 'font-size': 8.2, 'font-weight': 600, 'font-family': FONT, fill: '#ffffff', 'letter-spacing': '.09em', opacity: .9}, g);
+				tg.textContent = tl;
+			}
 		}
 
 		if (selected) {
-			el('rect', {x: x - 1, y: y - .5, width: w + 2, height: h + 1, rx: 3, fill: 'none', stroke: '#ffffff', 'stroke-width': 2.4}, g);
+			el('rect', {x: x - 1, y: y - .5, width: w + 2, height: h + 1, rx: 7, fill: 'none', stroke: '#ffffff', 'stroke-width': 2.2}, g);
 		}
 
 		return g;
@@ -1020,98 +1306,249 @@
 	function resolvePorts(racks) {
 		var resolved = {}, effPorts = {}, usedPorts = {}, devEnds = {}, devs = [];
 		racks.forEach(function (rack) {
-		devs = devs.concat(rack.devices);
-		rack.links.forEach(function (l) {
-			[['a', l.a, l.a_port], ['b', l.b, l.b_port]].forEach(function (e) {
-				(devEnds[e[1]] = devEnds[e[1]] || []).push({key: l.id + ':' + e[0], idx: portIndex(e[2]), l: l});
+			devs = devs.concat(rack.devices);
+			rack.links.forEach(function (l) {
+				[['a', l.a, l.a_port], ['b', l.b, l.b_port]].forEach(function (e) {
+					var k = pk(e[1], endFace(l, e[0]));
+					(devEnds[k] = devEnds[k] || []).push({key: l.id + ':' + e[0], idx: portIndex(e[2]), l: l});
+				});
 			});
-		});
 		});
 		devs.forEach(function (d) {
-			var ends = devEnds[d.id] || [], taken = {}, max = -1;
-			ends.forEach(function (e) { if (e.idx >= 0 && e.idx < 96) { taken[e.idx] = true; max = Math.max(max, e.idx); } else { e.idx = -1; } });
-			var next = 0;
-			ends.forEach(function (e) {
-				if (e.idx < 0) {
-					while (taken[next] && next < 96) { next++; }
-					if (next < 96) { e.idx = next; taken[next] = true; max = Math.max(max, next); }
-				}
-				resolved[e.key] = e.idx;
-				if (e.idx >= 0) {
-					(usedPorts[d.id] = usedPorts[d.id] || {})[e.idx] = e.l.color || CABLE_COLOR[e.l.cable] || CABLE_COLOR.other;
-				}
+			[0, 1].forEach(function (f) {
+				var k = pk(d.id, f), ends = devEnds[k] || [], taken = {}, max = -1;
+				ends.forEach(function (e) { if (e.idx >= 0 && e.idx < 96) { taken[e.idx] = true; max = Math.max(max, e.idx); } else { e.idx = -1; } });
+				var next = 0;
+				ends.forEach(function (e) {
+					if (e.idx < 0) {
+						while (taken[next] && next < 96) { next++; }
+						if (next < 96) { e.idx = next; taken[next] = true; max = Math.max(max, next); }
+					}
+					resolved[e.key] = e.idx;
+					if (e.idx >= 0) {
+						(usedPorts[k] = usedPorts[k] || {})[e.idx] = e.l.color || CABLE_COLOR[e.l.cable] || CABLE_COLOR.other;
+					}
+				});
+				effPorts[k] = Math.min(96, Math.max((d.ports || 0) + sfpCount(d), max + 1));
 			});
-			effPorts[d.id] = Math.min(96, Math.max((d.ports || 0) + sfpCount(d), max + 1));
 		});
 
 		return {resolved: resolved, effPorts: effPorts, usedPorts: usedPorts};
 	}
 
-	function drawOne(svg, rack, ox, hosts, editing, ctx, ro) {
+	function rearTheme() {
+		var v = 'light';
+		try { v = localStorage.getItem('rackmap.rear') || v; } catch (e) {}
+		return ['light', 'color', 'dark'].indexOf(v) >= 0 ? v : 'light';
+	}
+
+	function styleSelect(bar) {
+		html('label', {}, L.rear_theme + ' :', bar);
+		var rs = select([['light', L.rt_light], ['color', L.rt_color], ['dark', L.rt_dark]], rearTheme(), function (v) {
+			try { localStorage.setItem('rackmap.rear', v); } catch (e) { /* ignore */ }
+			render();
+		});
+		rs.style.flex = 'none';
+		bar.appendChild(rs);
+
+		html('label', {}, L.rack_style + ' :', bar);
+		var ss = select([['cabinet', L.rs_cabinet], ['open', L.rs_open], ['card', L.rs_card]], rackStyle(), function (v) {
+			try { localStorage.setItem('rackmap.style', v); } catch (e) { /* ignore */ }
+			render();
+		});
+		ss.style.flex = 'none';
+		bar.appendChild(ss);
+	}
+
+	function rackStyle() {
+		var v = 'cabinet';
+		try { v = localStorage.getItem('rackmap.style') || v; } catch (e) {}
+		return ['cabinet', 'open', 'card'].indexOf(v) >= 0 ? v : 'cabinet';
+	}
+
+	function defsRack(svg) {
+		if (svg.querySelector('#rm-post')) { return; }
+		var d = svg.querySelector('defs') || el('defs', {}, svg);
+		grad(d, 'rm-post', [[0, '#8e99a8'], [0.25, '#e4e9f0'], [0.5, '#b3bcc9'], [1, '#6e7a8a']], 1, 0);
+		grad(d, 'rm-side', [[0, '#1b222c'], [0.5, '#121820'], [1, '#1b222c']], 1, 0);
+		grad(d, 'rm-top', [[0, '#3a4452'], [1, '#202733']], 0, 1);
+		grad(d, 'rm-glass', [[0, '#ffffff', 0.07], [0.45, '#ffffff', 0.02], [0.5, '#ffffff', 0], [1, '#ffffff', 0.04]], 1, 1);
+		grad(d, 'rm-cardbg', [[0, '#141a22'], [1, '#0c1016']], 0, 1);
+		grad(d, 'rm-strip', [[0, '#202833'], [1, '#161c24']], 0, 1);
+	}
+
+	// cadre de la baie selon le style : cabinet (armoire), open (cadre ouvert), card (carte moderne)
+	function drawFrame(svg, RS, fx, fw, bodyH, ROOF, PLINTH, face) {
+		defsRack(svg);
+		var base = TOP + bodyH;
+		el('ellipse', {cx: fx + fw / 2, cy: base + PLINTH + 16, rx: fw / 2 + 10, ry: 7, fill: '#000', opacity: RS === 'open' ? .5 : .35, filter: 'url(#rm-blur)'}, svg);
+		if (RS === 'cabinet') {
+			// panneaux latéraux + toit ventilé + plinthe avec roulettes
+			el('rect', {x: fx - 9, y: TOP - ROOF - 2, width: fw + 18, height: bodyH + ROOF + PLINTH + 6, rx: 7, fill: 'url(#rm-side)', stroke: '#06080b', 'stroke-width': 1.6}, svg);
+			el('rect', {x: fx - 9, y: TOP - ROOF - 2, width: fw + 18, height: ROOF + 2, rx: 7, fill: 'url(#rm-top)', stroke: '#06080b', 'stroke-width': 1.2}, svg);
+			el('rect', {x: fx - 6, y: TOP - ROOF - 1, width: fw + 12, height: 1.2, rx: .6, fill: '#fff', opacity: .22}, svg);
+			for (var i = 0; i < 9; i++) {
+				el('rect', {x: fx + 16 + i * 9, y: TOP - ROOF + 5, width: 5, height: 2.4, rx: 1.2, fill: '#0a0d12', opacity: .8}, svg);
+				el('rect', {x: fx + fw - 16 - 5 - i * 9, y: TOP - ROOF + 5, width: 5, height: 2.4, rx: 1.2, fill: '#0a0d12', opacity: .8}, svg);
+			}
+			el('rect', {x: fx + fw / 2 - 28, y: TOP - ROOF + 3, width: 56, height: 8, rx: 4, fill: '#0b0f14', stroke: '#394453', 'stroke-width': .8}, svg);
+			el('circle', {cx: fx + fw / 2 - 18, cy: TOP - ROOF + 7, r: 1.8, fill: '#34d399', opacity: .95}, svg);
+			el('rect', {x: fx - 9, y: base + 3, width: fw + 18, height: PLINTH, rx: 5, fill: 'url(#rm-top)', stroke: '#06080b', 'stroke-width': 1.2}, svg);
+			for (var k = 0; k < 14; k++) {
+				el('rect', {x: fx + 30 + k * ((fw - 60) / 13) - 6, y: base + 8, width: 12, height: 2.2, rx: 1.1, fill: '#0a0d12', opacity: .75}, svg);
+			}
+			[fx + 6, fx + fw - 6].forEach(function (cx) {
+				el('circle', {cx: cx, cy: base + PLINTH + 9, r: 5, fill: '#10141a', stroke: '#2a323d', 'stroke-width': 1}, svg);
+				el('circle', {cx: cx, cy: base + PLINTH + 9, r: 1.7, fill: '#3a4452'}, svg);
+			});
+			el('rect', {x: RACK_X - 2, y: TOP - 2, width: RACK_W + 4, height: bodyH + 4, fill: '#06080b'}, svg);
+		}
+		else if (RS === 'open') {
+			el('rect', {x: RACK_X - 6, y: TOP - 8, width: RACK_W + 12, height: 6, rx: 3, fill: 'url(#rm-post)', opacity: .9}, svg);
+			el('rect', {x: RACK_X - 6, y: base + 2, width: RACK_W + 12, height: 6, rx: 3, fill: 'url(#rm-post)', opacity: .9}, svg);
+			el('rect', {x: RACK_X, y: TOP, width: RACK_W, height: bodyH, fill: '#0a0e13', opacity: .55}, svg);
+			[fx - 2, fx + fw - 18].forEach(function (x0) {
+				el('rect', {x: x0, y: TOP - 12, width: 20, height: bodyH + 12 + 14, rx: 4, fill: 'url(#rm-post)', stroke: '#4c5766', 'stroke-width': .8}, svg);
+				el('rect', {x: x0 - 3, y: base + 14, width: 26, height: 6, rx: 3, fill: '#222a34', stroke: '#06080b', 'stroke-width': 1}, svg);
+			});
+		}
+		else {
+			el('rect', {x: fx - 10, y: TOP - ROOF - 4, width: fw + 20, height: bodyH + ROOF + PLINTH + 8, rx: 16, fill: 'url(#rm-cardbg)', stroke: '#26303c', 'stroke-width': 1.4}, svg);
+			el('rect', {x: fx - 9, y: TOP - ROOF - 3, width: fw + 18, height: 1.4, rx: .7, fill: '#fff', opacity: .12}, svg);
+			el('rect', {x: fx - 4, y: TOP - 4, width: fw + 8, height: bodyH + 8, rx: 8, fill: '#080b0f', stroke: '#1a222c', 'stroke-width': 1}, svg);
+			[fx, RACK_X + RACK_W].forEach(function (x0) {
+				el('rect', {x: x0 + 1, y: TOP, width: RAIL_W() - 2, height: bodyH, rx: 4, fill: 'url(#rm-strip)'}, svg);
+			});
+			el('circle', {cx: fx + 4, cy: base + PLINTH - 2, r: 2.4, fill: '#2b3542'}, svg);
+			el('circle', {cx: fx + fw - 4, cy: base + PLINTH - 2, r: 2.4, fill: '#2b3542'}, svg);
+		}
+		if (RS !== 'card') {
+			el('rect', {x: RACK_X, y: TOP, width: RACK_W, height: bodyH, fill: '#0b0f14', opacity: RS === 'open' ? 0 : 1}, svg);
+			[fx, RACK_X + RACK_W].forEach(function (x0) {
+				if (RS === 'open') { return; }
+				el('rect', {x: x0, y: TOP, width: RAIL_W(), height: bodyH, fill: 'url(#rm-rail)', stroke: '#0a0d11', 'stroke-width': .8}, svg);
+			});
+		}
+		else {
+			el('rect', {x: RACK_X, y: TOP, width: RACK_W, height: bodyH, fill: '#0b0f14'}, svg);
+		}
+	}
+
+	function RAIL_W() { return 22; }
+
+	// décor d'une unité U : trous de montants, numéro, emplacement vide
+	function drawUnit(svg, RS, rack, u, y, fx, oc) {
+		var RAIL = RAIL_W();
+		var num = rack.u_desc ? rack.units - u + 1 : u;
+		[fx, RACK_X + RACK_W].forEach(function (rx0) {
+			if (RS === 'card') {
+				[.18, .5, .82].forEach(function (f) {
+					el('rect', {x: rx0 + RAIL / 2 - 3.5, y: y + UH * f - .6, width: 7, height: 1.2, rx: .6, fill: u % 5 === 0 && f === .5 ? '#5b6a7e' : '#3a4656'}, svg);
+				});
+			}
+			else if (RS === 'open') {
+				[.2, .5, .8].forEach(function (f) {
+					el('rect', {x: rx0 + RAIL / 2 - 2.7 - 1, y: y + UH * f - 3, width: 5.4, height: 6, rx: 2.2, fill: '#222a34', stroke: '#566174', 'stroke-width': .5}, svg);
+				});
+			}
+			else {
+				[.2, .5, .8].forEach(function (f) {
+					el('rect', {x: rx0 + RAIL / 2 - 2.7, y: y + UH * f - 3, width: 5.4, height: 6, rx: 1.3, fill: '#070a0e', stroke: '#364150', 'stroke-opacity': .9, 'stroke-width': .5}, svg);
+				});
+			}
+		});
+		if (RS === 'card') {
+			var pw = String(num).length > 1 ? 22 : 18;
+			el('rect', {x: fx - 12 - pw + 4, y: y + UH / 2 - 8, width: pw, height: 16, rx: 8, fill: '#161d27', stroke: '#222c39', 'stroke-width': .8}, svg);
+			var tn = el('text', {x: fx - 12 - pw / 2 + 4, y: y + UH / 2 + 3.5, 'text-anchor': 'middle', 'font-size': 9.5, 'font-family': MONO, fill: '#7e8da3'}, svg);
+			tn.textContent = num;
+		}
+		else {
+			var t = el('text', {x: fx - 12, y: y + UH / 2 + 3.5, 'text-anchor': 'end', 'font-size': 9.5, 'font-family': MONO, fill: RS === 'open' ? '#7b8798' : '#5b6678'}, svg);
+			t.textContent = num;
+		}
+		var halves = [];
+		if (!oc.l && !oc.r) { halves.push([RACK_X + 1, RACK_W - 2]); }
+		else {
+			if (!oc.l) { halves.push([RACK_X + 1, RACK_W / 2 - 2]); }
+			if (!oc.r) { halves.push([RACK_X + RACK_W / 2 + 1, RACK_W / 2 - 2]); }
+		}
+		halves.forEach(function (hw) {
+			if (RS === 'card') {
+				el('rect', {x: hw[0], y: y + 1, width: hw[1], height: UH - 2, rx: 5, fill: u % 2 ? '#0f141b' : '#0c1117', stroke: '#171e28', 'stroke-width': .8}, svg);
+				el('rect', {x: hw[0] + hw[1] / 2 - 10, y: y + UH / 2 - .5, width: 20, height: 1, rx: .5, fill: '#1e2733'}, svg);
+			}
+			else if (RS === 'open') {
+				el('rect', {x: hw[0], y: y + 1, width: hw[1], height: UH - 2, rx: 3, fill: '#0c1117', opacity: .6, stroke: '#1d2631', 'stroke-width': .8, 'stroke-dasharray': '3 3'}, svg);
+			}
+			else {
+				el('rect', {x: hw[0], y: y + 1, width: hw[1], height: UH - 2, rx: 3, fill: '#0e1319', stroke: '#18202a', 'stroke-width': 1}, svg);
+				el('rect', {x: hw[0] + 3, y: y + UH - 3.5, width: hw[1] - 6, height: 1, fill: '#fff', opacity: .03}, svg);
+			}
+		});
+	}
+
+	function drawOne(svg, rack, ox, hosts, editing, ctx, ro, face) {
+		face = face === 1 ? 1 : 0;
 		var RAIL = 22, ROOF = 16, PLINTH = 16;
 		var bodyH = rack.units * UH;
 
 		var fx = RACK_X - RAIL, fw = RACK_W + 2 * RAIL;
 
-		// ombre au sol, caisson, toit et socle
-		el('ellipse', {cx: fx + fw / 2, cy: TOP + bodyH + PLINTH + 14, rx: fw / 2 + 6, ry: 6, fill: '#000', opacity: .35}, svg);
-		el('rect', {x: fx - 6, y: TOP - ROOF, width: fw + 12, height: bodyH + ROOF + 4, rx: 5, fill: 'url(#rm-body)', stroke: '#050607', 'stroke-width': 2}, svg);
-		el('rect', {x: fx - 8, y: TOP - ROOF - 2, width: fw + 16, height: ROOF, rx: 4, fill: 'url(#rm-cap)', stroke: '#0a0b0d', 'stroke-width': 1.5}, svg);
-		el('rect', {x: fx - 8, y: TOP + bodyH + 2, width: fw + 16, height: PLINTH, rx: 4, fill: 'url(#rm-cap)', stroke: '#0a0b0d', 'stroke-width': 1.5}, svg);
-		[fx + 4, fx + fw - 4].forEach(function (cx) {
-			el('rect', {x: cx - 6, y: TOP + bodyH + PLINTH + 2, width: 12, height: 6, rx: 2, fill: '#1c1f23'}, svg);
-		});
-
-		// intérieur sombre + montants perforés
-		el('rect', {x: RACK_X, y: TOP, width: RACK_W, height: bodyH, fill: '#0c0e10'}, svg);
-		[fx, RACK_X + RACK_W].forEach(function (rx0) {
-			el('rect', {x: rx0, y: TOP, width: RAIL, height: bodyH, fill: 'url(#rm-rail)', stroke: '#2a2e34', 'stroke-width': .8}, svg);
-		});
+		var RS = rackStyle();
+		drawFrame(svg, RS, fx, fw, bodyH, ROOF, PLINTH, face);
 
 		var occupied = {};
 		rack.devices.forEach(function (d) {
 			var bu0 = bottomU(rack, d);
 			for (var u = bu0; u < bu0 + d.u_height; u++) {
 				var oc = occupied[u] = occupied[u] || {};
-				if (!d.slot) { oc.l = oc.r = true; } else if (d.slot === 1) { oc.l = true; } else { oc.r = true; }
+				if (!d.slot) { oc.l = oc.r = true; } else if ((d.slot === 1) !== !!face) { oc.l = true; } else { oc.r = true; }
 			}
 		});
 
 		for (var u = 1; u <= rack.units; u++) {
 			var y = TOP + (rack.units - u) * UH;
-			[fx, RACK_X + RACK_W].forEach(function (rx0) {
-				[.2, .5, .8].forEach(function (f) {
-					el('rect', {x: rx0 + RAIL / 2 - 3, y: y + UH * f - 3.5, width: 6, height: 7, rx: 1.4, fill: '#15181c', stroke: '#5e646d', 'stroke-width': .5}, svg);
-				});
-			});
-			var t = el('text', {x: fx - 12, y: y + UH / 2 + 4, 'text-anchor': 'end', 'font-size': 10.5, fill: '#8a8f98'}, svg);
-			t.textContent = rack.u_desc ? rack.units - u + 1 : u;
 			var oc2 = occupied[u] || {};
-			if (!oc2.l && !oc2.r) {
-				el('rect', {x: RACK_X + 1, y: y + 1, width: RACK_W - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg);
-			}
-			else {
-				if (!oc2.l) { el('rect', {x: RACK_X + 1, y: y + 1, width: RACK_W / 2 - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg); }
-				if (!oc2.r) { el('rect', {x: RACK_X + RACK_W / 2 + 1, y: y + 1, width: RACK_W / 2 - 2, height: UH - 2, fill: '#14171a', stroke: '#1d2126', 'stroke-width': 1}, svg); }
-			}
+			drawUnit(svg, RS, rack, u, y, fx, oc2);
 		}
 
-		var tt = el('text', {x: fx + fw / 2, y: 11, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: 'currentColor', opacity: .85}, svg);
+		var tt = el('text', {x: fx + fw / 2, y: 11, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, 'font-family': FONT, fill: 'currentColor', opacity: .85}, svg);
 		tt.textContent = rack.name + (rack.site ? '  \u00b7  ' + rack.site : '');
+		if (face === 1 || facesOf(rack).length > 1) {
+			var fts = el('tspan', {fill: face ? '#f59e0b' : '#60a5fa', 'font-weight': 700}, tt);
+			fts.textContent = '  \u00b7  ' + (face ? L.face_rear : L.face_front).toUpperCase();
+		}
 
 		rack.devices.forEach(function (d) {
 			var st = deviceState(d, hosts);
 			var y = TOP + (rack.units - (bottomU(rack, d) + d.u_height - 1)) * UH;
 			var h = d.u_height * UH;
-			var slot = d.slot || 0, dw = slot ? RACK_W / 2 - 1 : RACK_W, dx = slot === 2 ? RACK_X + RACK_W / 2 + 1 : RACK_X;
-			ctx.pos[d.id] = {y: y, h: h, cy: y + h / 2, ox: ox, rx: dx + dw};
+			var slot = d.slot || 0, dw = slot ? RACK_W / 2 - 1 : RACK_W;
+			var dx = slot !== 0 && ((slot === 2) !== !!face) ? RACK_X + RACK_W / 2 + 1 : RACK_X;
+			var key = pk(d.id, face);
+			ctx.pos[key] = {y: y, h: h, cy: y + h / 2, ox: ox, rx: dx + dw};
 			var color = st.state === 'problem' && st.severity >= 0 ? SEV_COLOR[st.severity] : (st.state === 'down' ? COL_DOWN : STATE_COLOR[st.state]);
 			var selected = editing ? (!ro && state.edit.selected === d.id) : state.sel === d.id;
 			var tip = d.name + ' - ' + L['st_' + st.state] + (st.problems ? ' (' + st.problems + ' ' + L.problems + ')' : '');
-			ctx.ports[d.id] = {};
-			var g = drawDevice(svg, Object.assign({}, d, {ports: Math.max(0, ctx.res.effPorts[d.id] - sfpCount(d))}), dx, y, dw, h, color, st, tip, selected, ctx.res.usedPorts[d.id],
-				function (i, px, py) { ctx.ports[d.id][i] = {x: px + ox, y: py}; });
-			ctx.devEls[d.id] = g;
+			ctx.ports[key] = {};
+			var g = drawDevice(svg, Object.assign({}, d, {ports: Math.max(0, ctx.res.effPorts[key] - sfpCount(d))}), dx, y, dw, h, color, st, tip, selected, ctx.res.usedPorts[key],
+				function (i, px, py) { ctx.ports[key][i] = {x: px + ox, y: py}; }, face);
+			(ctx.devEls[d.id] = ctx.devEls[d.id] || []).push(g);
+			// face opposée non affichée : on la dessine hors écran pour connaître la position réelle de ses ports (câbles « en transparence »)
+			var of = 1 - face, oKey = pk(d.id, of);
+			if (facesOf(rack).indexOf(of) < 0 && ctx.res.effPorts[oKey] !== undefined) {
+				var dxo = slot !== 0 && ((slot === 2) !== !!of) ? RACK_X + RACK_W / 2 + 1 : RACK_X;
+				ctx.gpos[oKey] = {y: y, h: h, cy: y + h / 2, ox: ox, rx: dx + dw};
+				ctx.gports[oKey] = {};
+				try {
+					drawDevice(document.createElementNS('http://www.w3.org/2000/svg', 'g'), Object.assign({}, d, {ports: Math.max(0, ctx.res.effPorts[oKey] - sfpCount(d))}), dxo, y, dw, h, color, st, tip, false, ctx.res.usedPorts[oKey],
+						function (i, px, py) {
+							// vue en transparence : l'arrière est dessiné dans son propre emplacement puis ramené, en miroir, sur l'emplacement de l'équipement à l'écran
+							ctx.gports[oKey][i] = {x: ox + (dx + dw) - (px - dxo), y: py};
+						}, of);
+				} catch (e) { /* ignore */ }
+			}
 			ctx.devState[d.id] = st.state;
 			g.addEventListener('mouseenter', function () { ctx.apply(d.id); });
 			g.addEventListener('mouseleave', function () { ctx.apply(editing ? state.edit.selected : state.sel); });
@@ -1129,8 +1566,22 @@
 	/** Dessine une ou plusieurs baies côte à côte dans un même SVG ; les câbles (y compris entre baies) sont tracés par-dessus. */
 	function drawRacks(parent, list, hosts, editing) {
 		var RAIL = 22, GAP = 44;
+		var panels = [];
+		list.forEach(function (r) { facesOf(r).forEach(function (f) { panels.push({rack: r, face: f}); }); });
 		var colW = RACK_X + RACK_W + RAIL + 24, step = colW + GAP;
-		var width = list.length * colW + (list.length - 1) * GAP;
+		var shownKeys = {};
+		panels.forEach(function (pn) { pn.rack.devices.forEach(function (d) { shownKeys[pk(d.id, pn.face)] = true; }); });
+		var allRacks = list.slice();
+		if (!editing) { ((state.data && state.data.racks) || []).forEach(function (r) { if (!list.some(function (x) { return x.id === r.id; })) { allRacks.push(r); } }); }
+		var devInfo = {};
+		allRacks.forEach(function (r) { r.devices.forEach(function (d) { devInfo[d.id] = {name: d.name, rack: r.name}; }); });
+		var hasStub = allRacks.some(function (r) {
+			return r.links.some(function (l) {
+				var a = !!(shownKeys[pk(l.a, 0)] || shownKeys[pk(l.a, 1)]), b = !!(shownKeys[pk(l.b, 0)] || shownKeys[pk(l.b, 1)]);
+				return a !== b;
+			});
+		});
+		var width = panels.length * colW + (panels.length - 1) * GAP + (hasStub ? 80 : 0);
 		var maxUnits = Math.max.apply(null, list.map(function (r) { return r.units; }));
 		var height = TOP + maxUnits * UH + 16 + 26;
 		var svg = el('svg', {width: width, height: height, viewBox: '0 0 ' + width + ' ' + height, style: 'user-select:none'}, null);
@@ -1153,12 +1604,12 @@
 		svg.setAttribute('width', Math.round(width * scale));
 		svg.setAttribute('height', Math.round(height * scale));
 
-		var ctx = {res: resolvePorts(list), pos: {}, ports: {}, devEls: {}, devState: {}, cableEls: [], apply: function () {}};
+		var ctx = {res: resolvePorts(list), pos: {}, ports: {}, gpos: {}, gports: {}, devEls: {}, devState: {}, cableEls: [], apply: function () {}};
 		var cableMode = editing ? 'all' : state.cableMode;
 
-		list.forEach(function (rack, i) {
-			var ro = editing && rack !== state.edit.rack;
-			drawOne(el('g', {transform: 'translate(' + (i * step) + ',0)'}, svg), rack, i * step, hosts, editing, ctx, ro);
+		panels.forEach(function (pn, i) {
+			var ro = editing && pn.rack !== state.edit.rack;
+			drawOne(el('g', {transform: 'translate(' + (i * step) + ',0)'}, svg), pn.rack, i * step, hosts, editing, ctx, ro, pn.face);
 		});
 
 		function applyCables(devId) {
@@ -1173,25 +1624,58 @@
 			});
 			Object.keys(ctx.devEls).forEach(function (id) {
 				var dim = focus && !editing && cableMode !== 'none' && !peers[id] && String(id) !== String(devId);
-				ctx.devEls[id].style.opacity = dim ? .45 : 1;
+				ctx.devEls[id].forEach(function (e) { e.style.opacity = dim ? .45 : 1; });
 			});
 		}
 		ctx.apply = applyCables;
 
 		var devState = ctx.devState, fall = {};
-		var endpoint = function (id, key) {
-			var idx = ctx.res.resolved[key], p = ctx.ports[id] && ctx.ports[id][idx];
+		var endpoint = function (id, key, face) {
+			var pkey = pk(id, face), idx = ctx.res.resolved[key], p = ctx.ports[pkey] && ctx.ports[pkey][idx];
 			if (p) { return p; }
-			var ps = ctx.pos[id], k = fall[id] = (fall[id] || 0) + 1;
+			var ps = ctx.pos[pkey], k = fall[pkey] = (fall[pkey] || 0) + 1;
 			return {x: ps.ox + ps.rx - 24, y: ps.cy + (k - 1) * 7 - 3};
 		};
 
 		var traffic = (state.data && state.data.traffic) || {};
 		var layer = el('g', {}, svg);
-		list.forEach(function (rack) {
+		allRacks.forEach(function (rack) {
 			rack.links.forEach(function (l) {
-				if (!ctx.pos[l.a] || !ctx.pos[l.b]) { return; }
-				var A = endpoint(l.a, l.id + ':a'), B = endpoint(l.b, l.id + ':b');
+				var fa = endFace(l, 'a'), fb = endFace(l, 'b');
+				var pa = ctx.pos[pk(l.a, fa)], pb = ctx.pos[pk(l.b, fb)];
+				var da = pa || ctx.pos[pk(l.a, 1 - fa)], db = pb || ctx.pos[pk(l.b, 1 - fb)];
+				if (!da !== !db) {
+					pa = da; pb = db;
+					// une seule extrémité affichée : câble qui sort de la baie, avec rappel de l'équipement distant
+					var near = pa ? 'a' : 'b', farId = pa ? l.b : l.a, farFace = pa ? fb : fa, farPort = pa ? l.b_port : l.a_port;
+					var nid = pa ? l.a : l.b, nface = pa ? fa : fb, ps = pa || pb;
+					var P = ctx.pos[pk(nid, nface)] ? endpoint(nid, l.id + ':' + near, nface) : (ctx.gports[pk(nid, nface)] && ctx.gports[pk(nid, nface)][ctx.res.resolved[l.id + ':' + near]]) || {x: ps.ox + ps.rx - 14, y: ps.cy};
+					var scol = (devState[l.a] === 'down' || devState[l.b] === 'down') ? '#d9534f' : (l.color || CABLE_COLOR[l.cable] || CABLE_COLOR.other);
+					var ex = ps.ox + ps.rx + RAIL + 8 + 34, ey = P.y + 10;
+					var fi = devInfo[farId] || {name: '?', rack: ''};
+					var sg = el('g', {style: 'pointer-events:none'}, layer);
+					var sd = 'M' + P.x + ' ' + P.y + ' C' + P.x + ' ' + (P.y + 22) + ' ' + (ex - 30) + ' ' + ey + ' ' + ex + ' ' + ey;
+					el('path', {d: sd, fill: 'none', stroke: '#050607', 'stroke-width': 5, opacity: .5, 'stroke-linecap': 'round'}, sg);
+					el('path', {d: sd, fill: 'none', stroke: scol, 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-dasharray': '7 4'}, sg);
+					el('rect', {x: P.x - 3, y: P.y - 6, width: 6, height: 9, rx: 1.2, fill: '#101215', stroke: scol, 'stroke-width': 1.3}, sg);
+					var nm = fi.name.length > 9 ? fi.name.slice(0, 8) + '\u2026' : fi.name;
+					var txt = (farFace ? 'R' : 'F') + ' \u00b7 ' + nm;
+					var cw = txt.length * 5.6 + 12;
+					el('rect', {x: ex + 2, y: ey - 8, width: cw, height: 16, rx: 8, fill: '#161d27', stroke: scol, 'stroke-width': 1}, sg);
+					var ct = el('text', {x: ex + 2 + cw / 2, y: ey + 3.2, 'text-anchor': 'middle', 'font-size': 9, 'font-family': MONO, fill: '#d7deea'}, sg);
+					ct.textContent = txt;
+					el('title', {}, sg).textContent = (l.label ? l.label + ' - ' : '') + fi.name + (fi.rack ? ' (' + fi.rack + ')' : '') + ' - ' + L.port + ' ' + (farPort || '?') + ' - ' + (farFace ? L.face_rear : L.face_front);
+					ctx.cableEls.push({l: l, g: sg});
+					return;
+				}
+				if (!da || !db) { return; }
+				var hidA = !pa, hidB = !pb;
+				var ghostEnd = function (id, key, face, dpos) {
+					var gp = ctx.gports[pk(id, face)], gi = ctx.res.resolved[key];
+					return gp && gp[gi] ? gp[gi] : {x: dpos.ox + dpos.rx - 14, y: dpos.cy};
+				};
+				var A = hidA ? ghostEnd(l.a, l.id + ':a', fa, da) : endpoint(l.a, l.id + ':a', fa);
+				var B = hidB ? ghostEnd(l.b, l.id + ':b', fb, db) : endpoint(l.b, l.id + ':b', fb);
 				var bad = devState[l.a] === 'down' || devState[l.b] === 'down';
 				var color = bad ? '#d9534f' : (l.color || CABLE_COLOR[l.cable] || CABLE_COLOR.other);
 				var sag = 22 + Math.min(70, Math.abs(B.x - A.x) * 0.12 + Math.abs(B.y - A.y) * 0.18);
@@ -1200,7 +1684,7 @@
 				var cg = el('g', {style: 'pointer-events:none'}, layer);
 				el('path', {d: dd, fill: 'none', stroke: '#050607', 'stroke-width': 5, opacity: .5, 'stroke-linecap': 'round'}, cg);
 				el('path', {d: dd, fill: 'none', stroke: color, 'stroke-width': 2.6, 'stroke-linecap': 'round',
-					'stroke-dasharray': l.cable === 'power' ? '6 3' : ''}, cg);
+					'stroke-dasharray': (hidA || hidB) ? '7 4' : (l.cable === 'power' ? '6 3' : '')}, cg);
 				var tr = traffic[l.id];
 				if (tr && animOn() && !editing) {
 					[['ab', '#7fe9ff', 'rm-flow-a', 0], ['ba', '#ffc46b', 'rm-flow-b', 6]].forEach(function (f) {
@@ -1212,8 +1696,19 @@
 						fp.style.animation = f[2] + ' ' + dur.toFixed(2) + 's linear infinite';
 					});
 				}
-				[A, B].forEach(function (e) {
-					el('rect', {x: e.x - 3, y: e.y - 6, width: 6, height: 9, rx: 1.2, fill: '#101215', stroke: color, 'stroke-width': 1.3}, cg);
+				[[A, hidA, fa], [B, hidB, fb]].forEach(function (en) {
+					var e = en[0];
+					if (en[1]) {
+						// extrémité sur la face non affichée : le câble contourne l'équipement et se raccorde à son dos
+						el('rect', {x: e.x - 7, y: e.y - 8, width: 14, height: 14, rx: 3, fill: '#0b0f14', 'fill-opacity': .55, stroke: color, 'stroke-width': 1, 'stroke-dasharray': '2 2'}, cg);
+						el('rect', {x: e.x - 3, y: e.y - 6, width: 6, height: 9, rx: 1.2, fill: '#101215', 'fill-opacity': .6, stroke: color, 'stroke-width': 1.3, 'stroke-opacity': .85}, cg);
+						el('circle', {cx: e.x + 8, cy: e.y - 9, r: 5.5, fill: '#161d27', stroke: color, 'stroke-width': 1.2}, cg);
+						var lt = el('text', {x: e.x + 8, y: e.y - 6, 'text-anchor': 'middle', 'font-size': 7.5, 'font-weight': 700, 'font-family': MONO, fill: '#e6ecf5'}, cg);
+						lt.textContent = en[2] ? 'R' : 'F';
+					}
+					else {
+						el('rect', {x: e.x - 3, y: e.y - 6, width: 6, height: 9, rx: 1.2, fill: '#101215', stroke: color, 'stroke-width': 1.3}, cg);
+					}
 				});
 				el('title', {}, cg).textContent = (l.label ? l.label + ' - ' : '') + (l.a_port || '?') + ' <-> ' + (l.b_port || '?') +
 					(tr ? '  (A\u2192B ' + fmtBps(tr.ab) + ' / B\u2192A ' + fmtBps(tr.ba) + ')' : '');
@@ -1225,25 +1720,28 @@
 			var pend = state.edit.pending;
 			list.forEach(function (rack) {
 				rack.devices.forEach(function (d) {
-					Object.keys(ctx.ports[d.id] || {}).forEach(function (k) {
-						var pt = ctx.ports[d.id][k], i = parseInt(k, 10);
-						var isP = pend && pend.dev === d.id && pend.idx === i;
-						var hit = el('rect', {x: pt.x - 7.5, y: pt.y - 6.5, width: 15, height: 13, rx: 2, fill: '#ffffff',
-							'fill-opacity': isP ? .35 : 0, stroke: isP ? '#ffffff' : 'none', 'stroke-width': 1.6, style: 'cursor:crosshair'}, svg);
-						hit._p = {d: d, i: i};
-						el('title', {}, hit).textContent = d.name + ' - ' + L.port + ' ' + (i + 1);
-						hit.addEventListener('mouseenter', function () { if (!isP) { hit.setAttribute('fill-opacity', .3); } });
-						hit.addEventListener('mouseleave', function () { if (!isP) { hit.setAttribute('fill-opacity', 0); } });
-						hit.addEventListener('mousedown', function (ev) {
-							ev.stopPropagation();
-							if (ev.button !== 0) { return; }
-							ev.preventDefault();
-							startPortDrag(ev, svg, pt, d, i);
-						});
-						hit.addEventListener('click', function (ev) {
-							ev.stopPropagation();
-							if (suppressClick) { suppressClick = false; return; }
-							portClick(state.edit.rack, d, i);
+					[0, 1].forEach(function (face) {
+						var pm = ctx.ports[pk(d.id, face)] || {};
+						Object.keys(pm).forEach(function (k) {
+							var pt = pm[k], i = parseInt(k, 10);
+							var isP = pend && pend.dev === d.id && pend.idx === i && (pend.face || 0) === face;
+							var hit = el('rect', {x: pt.x - 7.5, y: pt.y - 6.5, width: 15, height: 13, rx: 2, fill: '#ffffff',
+								'fill-opacity': isP ? .35 : 0, stroke: isP ? '#ffffff' : 'none', 'stroke-width': 1.6, style: 'cursor:crosshair'}, svg);
+							hit._p = {d: d, i: i, face: face};
+							el('title', {}, hit).textContent = d.name + ' - ' + L.port + ' ' + (i + 1) + (d.type === 'patch' ? ' (' + (face ? L.face_rear : L.face_front) + ')' : '');
+							hit.addEventListener('mouseenter', function () { if (!isP) { hit.setAttribute('fill-opacity', .3); } });
+							hit.addEventListener('mouseleave', function () { if (!isP) { hit.setAttribute('fill-opacity', 0); } });
+							hit.addEventListener('mousedown', function (ev) {
+								ev.stopPropagation();
+								if (ev.button !== 0) { return; }
+								ev.preventDefault();
+								startPortDrag(ev, svg, pt, d, i, face);
+							});
+							hit.addEventListener('click', function (ev) {
+								ev.stopPropagation();
+								if (suppressClick) { suppressClick = false; return; }
+								portClick(state.edit.rack, d, i, face);
+							});
 						});
 					});
 				});
@@ -1257,7 +1755,7 @@
 
 	var suppressClick = false;
 
-	function startPortDrag(ev, svg, pt, d, i) {
+	function startPortDrag(ev, svg, pt, d, i, face) {
 		var sx = ev.clientX, sy = ev.clientY, moved = false, line = null;
 
 		function toSvg(e) {
@@ -1284,9 +1782,9 @@
 			suppressClick = true;
 			setTimeout(function () { suppressClick = false; }, 0);
 			var tp = e.target && e.target._p;
-			if (tp && !(tp.d.id === d.id && tp.i === i)) {
-				state.edit.pending = {dev: d.id, idx: i};
-				portClick(state.edit.rack, tp.d, tp.i);
+			if (tp && !(tp.d.id === d.id && tp.i === i && tp.face === face)) {
+				state.edit.pending = {dev: d.id, idx: i, face: face};
+				portClick(state.edit.rack, tp.d, tp.i, tp.face);
 			}
 		}
 
@@ -1294,15 +1792,15 @@
 		window.addEventListener('mouseup', onUp);
 	}
 
-	function portClick(rack, d, i) {
+	function portClick(rack, d, i, face) {
 		var e = state.edit, p = e.pending;
 		var inRack = function (id) { return rack.devices.some(function (x) { return x.id === id; }); };
 		if (!p || p.dev === d.id || (!inRack(p.dev) && !inRack(d.id))) {
-			e.pending = (p && p.dev === d.id && p.idx === i) ? null : {dev: d.id, idx: i};
+			e.pending = (p && p.dev === d.id && p.idx === i && (p.face || 0) === (face || 0)) ? null : {dev: d.id, idx: i, face: face || 0};
 		}
 		else {
 			var nl = e.newLink;
-			rack.links.push({id: --state.tmp, a: p.dev, a_port: String(p.idx + 1), b: d.id, b_port: String(i + 1),
+			rack.links.push({id: --state.tmp, a: p.dev, a_port: String(p.idx + 1), a_face: p.face || 0, b: d.id, b_port: String(i + 1), b_face: face || 0,
 				a_iface: '', b_iface: '', cable: (nl && nl.cable) || 'rj45', color: '', label: ''});
 			e.pending = null;
 		}
@@ -1375,7 +1873,7 @@
 			var pos = firstFreeSlot(rack, 1);
 			if (!pos) { setMessage(L.no_space, false); return; }
 			var id = --state.tmp;
-			rack.devices.push({id: id, name: L.new_device, type: 'server', hostid: null, u_pos: pos, u_height: 1, ports: 0, sfp_groups: [], slot: 0, disks: -1, disk_orient: 0});
+			rack.devices.push({id: id, name: L.new_device, type: 'server', hostid: null, u_pos: pos, u_height: 1, ports: 0, sfp_groups: [], slot: 0, disks: -1, disk_orient: 0, port_face: 0, pp_media: 0});
 			state.edit.selected = id;
 			setMessage('', true);
 			render();
@@ -1391,7 +1889,13 @@
 	function drawDeviceForm(parent, rack, dev) {
 		var form = html('div', {style: 'margin-top:8px'}, undefined, parent);
 		field(form, L.name, textInput(dev.name, function (v) { dev.name = v; render(); }));
-		field(form, L.type, select(TYPES.map(function (t) { return [t, L['t_' + t]]; }), dev.type, function (v) { dev.type = v; render(); }));
+		field(form, L.type, select(TYPES.map(function (t) { return [t, L['t_' + t]]; }), dev.type, function (v) {
+			dev.type = v;
+			// valeur par défaut réaliste : ports à l'arrière pour serveur/stockage/onduleur/autre, à l'avant sinon (modifiable ensuite)
+			dev.port_face = ['server', 'storage', 'ups', 'other'].indexOf(v) >= 0 ? 1 : 0;
+			if (dev.port_face === 1 && (state.faces[String(rack.id)] || 'f') === 'f') { state.faces[String(rack.id)] = 'fr'; saveFaces(); }
+			render();
+		}));
 
 		var hostName = '';
 		(state.hosts || []).forEach(function (h) { if (h.id === dev.hostid) { hostName = h.name; } });
@@ -1420,6 +1924,17 @@
 		}
 		else {
 			field(form, L.ports, numInput(dev.ports, 0, 96, function (v) { dev.ports = v; render(); }));
+		}
+		if (dev.type === 'patch') {
+			field(form, L.pp_media, select([['0', L.pp_rj45], ['1', L.pp_fiber]], String(dev.pp_media || 0), function (v) { dev.pp_media = parseInt(v, 10); render(); }));
+		}
+		else {
+			field(form, L.port_face, select([['0', L.pf_front], ['1', L.pf_rear]], String(dev.port_face || 0), function (v) {
+				dev.port_face = parseInt(v, 10);
+				var fc = state.faces[String(rack.id)] || 'f';
+				if (dev.port_face === 1 && fc === 'f') { state.faces[String(rack.id)] = 'fr'; saveFaces(); }
+				render();
+			}));
 		}
 		if (['switch', 'router', 'firewall', 'server', 'storage', 'other'].indexOf(dev.type) >= 0) {
 			var gs = dev.sfp_groups = sfpGroups(dev).map(function (x) { return {n: x.n, speed: x.speed}; });
@@ -1465,14 +1980,18 @@
 
 		var pd = state.edit.pending, pdev = pd ? rack.devices.filter(function (x) { return x.id === pd.dev; })[0] : null;
 		html('div', {style: 'margin:4px 0;font-size:12px;' + (pdev ? 'font-weight:700' : 'opacity:.7')},
-			pdev ? L.mouse_from + ' : ' + pdev.name + ' ' + L.port + ' ' + (pd.idx + 1) + ' \u2192 ' + L.mouse_to : L.mouse_hint, parent);
+			pdev ? L.mouse_from + ' : ' + pdev.name + ' ' + L.port + ' ' + (pd.idx + 1) + (pdev.type === 'patch' ? ' (' + (pd.face ? L.face_rear : L.face_front) + ')' : '') + ' \u2192 ' + L.mouse_to : L.mouse_hint, parent);
 		if (pdev) { button(L.cancel, 'btn-alt', function () { state.edit.pending = null; render(); }, parent); }
 
 		if (!rack.links.length) { html('div', {style: 'opacity:.6;margin:4px 0'}, L.no_cables, parent); }
 
 		rack.links.forEach(function (l) {
 			var row = html('div', {style: 'display:flex;gap:6px;align-items:center;margin:4px 0'}, undefined, parent);
-			html('span', {style: 'flex:1'}, name(l.a) + (l.a_port ? ':' + l.a_port : '') + '  ↔  ' + name(l.b) + (l.b_port ? ':' + l.b_port : '') +
+			var fl = function (side) {
+				var dd = deviceById(side === 'a' ? l.a : l.b);
+				return dd && dd.type === 'patch' ? ' ' + (endFace(l, side) ? L.face_rear : L.face_front).toLowerCase() : '';
+			};
+			html('span', {style: 'flex:1'}, name(l.a) + (l.a_port ? ':' + l.a_port : '') + fl('a') + '  ↔  ' + name(l.b) + (l.b_port ? ':' + l.b_port : '') + fl('b') +
 				'  (' + (L['c_' + l.cable] || l.cable) + ')', row);
 			button('✕', 'btn-alt', function () {
 				rack.links = rack.links.filter(function (x) { return x !== l; });
@@ -1485,20 +2004,29 @@
 			r.devices.forEach(function (d) { opts.push([d.id, (r.id === rack.id ? '' : r.name + ' \u00b7 ') + d.name]); });
 		});
 		if (opts.length < 2) { return; }
-		var nl = state.edit.newLink || (state.edit.newLink = {a: opts[0][0], b: opts[1][0], a_port: '', b_port: '', a_iface: '', b_iface: '', cable: 'rj45'});
+		var nl = state.edit.newLink || (state.edit.newLink = {a: opts[0][0], b: opts[1][0], a_port: '', b_port: '', a_iface: '', b_iface: '', a_face: 0, b_face: 0, cable: 'rj45'});
+		var faceSel = function (id, key) {
+			var dd = deviceById(id);
+			if (dd && dd.type === 'patch') {
+				field(form, L.port + ' ' + key.toUpperCase() + ' \u00b7 ' + L.face_view.toLowerCase(), select([['0', L.face_front], ['1', L.face_rear]], String(nl[key + '_face'] || 0), function (v) { nl[key + '_face'] = parseInt(v, 10); }));
+			}
+		};
 		var form = html('div', {style: 'margin-top:8px;border-top:1px solid #4a5058;padding-top:6px'}, undefined, parent);
 		html('b', {}, L.add_cable, form);
-		field(form, 'A', select(opts, nl.a, function (v) { nl.a = parseInt(v, 10); }));
+		field(form, 'A', select(opts, nl.a, function (v) { nl.a = parseInt(v, 10); render(); }));
+		faceSel(nl.a, 'a');
 		field(form, L.port + ' A', textInput(nl.a_port, function (v) { nl.a_port = v; }));
 		field(form, L.iface + ' A', textInput(nl.a_iface, function (v) { nl.a_iface = v; }, {placeholder: L.iface_hint}));
-		field(form, 'B', select(opts, nl.b, function (v) { nl.b = parseInt(v, 10); }));
+		field(form, 'B', select(opts, nl.b, function (v) { nl.b = parseInt(v, 10); render(); }));
+		faceSel(nl.b, 'b');
 		field(form, L.port + ' B', textInput(nl.b_port, function (v) { nl.b_port = v; }));
 		field(form, L.iface + ' B', textInput(nl.b_iface, function (v) { nl.b_iface = v; }, {placeholder: L.iface_hint}));
 		field(form, L.cable_type, select(CABLES.map(function (c) { return [c, L['c_' + c]]; }), nl.cable, function (v) { nl.cable = v; }));
 		button('+ ' + L.add_cable, 'btn-alt', function () {
 			var ownIds = rack.devices.map(function (x) { return x.id; });
 			if (nl.a === nl.b || (ownIds.indexOf(nl.a) < 0 && ownIds.indexOf(nl.b) < 0)) { return; }
-			rack.links.push({id: --state.tmp, a: nl.a, a_port: nl.a_port, b: nl.b, b_port: nl.b_port, a_iface: nl.a_iface, b_iface: nl.b_iface, cable: nl.cable, color: '', label: ''});
+			rack.links.push({id: --state.tmp, a: nl.a, a_port: nl.a_port, a_face: nl.a_face || 0, b: nl.b, b_port: nl.b_port, b_face: nl.b_face || 0,
+				a_iface: nl.a_iface, b_iface: nl.b_iface, cable: nl.cable, color: '', label: ''});
 			state.edit.newLink = null;
 			render();
 		}, form);
@@ -1537,16 +2065,19 @@
 			id: r.id, name: r.name, units: r.units, description: r.description, site: r.site || '', u_desc: r.u_desc || 0,
 			devices: r.devices.map(function (d) {
 				return {id: d.id, name: d.name, type: d.type, hostid: d.hostid, u_pos: d.u_pos, u_height: d.u_height, ports: d.ports, sfp_groups: sfpGroups(d), slot: d.slot || 0,
-					disks: d.disks === undefined || d.disks === null ? -1 : d.disks, disk_orient: d.disk_orient || 0};
+					disks: d.disks === undefined || d.disks === null ? -1 : d.disks, disk_orient: d.disk_orient || 0,
+					port_face: d.port_face === 1 ? 1 : 0, pp_media: d.pp_media === 1 ? 1 : 0};
 			}),
 			links: r.links.map(function (l) {
-				return {a: l.a, b: l.b, a_port: l.a_port, b_port: l.b_port, a_iface: l.a_iface || '', b_iface: l.b_iface || '', cable: l.cable, color: l.color, label: l.label};
+				return {a: l.a, b: l.b, a_port: l.a_port, b_port: l.b_port, a_face: endFace(l, 'a'), b_face: endFace(l, 'b'),
+					a_iface: l.a_iface || '', b_iface: l.b_iface || '', cable: l.cable, color: l.color, label: l.label};
 			})
 		};
 
 		post('rackmap.save', {payload: JSON.stringify(payload)}).then(function (res) {
 			if (!res.ok) { setMessage(L.err_save + (res.error ? ' : ' + res.error : ''), false); return; }
 			state.current = res.id;
+			if (r.id <= 0 && state.faces[String(r.id)]) { state.faces[String(res.id)] = state.faces[String(r.id)]; saveFaces(); }
 			state.shown = (state.shown || []).filter(function (x) { return x !== res.id; }).concat([res.id]);
 			saveShown();
 			state.edit = null;

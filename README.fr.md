@@ -10,6 +10,8 @@ Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans l
 - Baie réaliste (montants, rails, équipements 1U/2U… par type : serveur, switch, routeur, pare-feu, patch, PDU, onduleur, NAS), équipements pleine largeur ou demi-largeur.
 - Faces avant détaillées : ports RJ45 et SFP (plusieurs groupes de vitesse), baies disques horizontales ou verticales.
 - Numérotation des U par baie : de bas en haut ou de haut en bas.
+- Vues avant et arrière, par baie : avant, arrière ou les deux côte à côte (ou l'avant d'une baie et l'arrière d'une autre). Les faces arrière montrent alimentations, ventilateurs et connecteurs ; chaque équipement a ses ports à l'avant ou à l'arrière.
+- Patch panels RJ45 ou fibre (LC), port n avant relié au port n arrière ; les câbles peuvent relier un port arrière à un port avant.
 - Couleur et voyant selon l'état de l'hôte associé (OK, problème par sévérité, injoignable, désactivé, passif).
 - Clic sur un équipement : panneau latéral façon Cablemap (métriques, graphiques, problèmes, interfaces, liens vers Zabbix) + toutes ses connexions ; les équipements reliés ressortent, les autres s'estompent.
 - Câbles partant de vrais ports ; animation selon le débit (items `net.if.in[...]` / `net.if.out[...]`), sens A→B et B→A, vitesse proportionnelle (échelle 1 Gb/s).
@@ -28,6 +30,7 @@ Module frontend **Zabbix 8.0** : visualisez vos baies informatiques comme dans l
 3. Administration → Général → Modules → Scan directory → activer « Rackmap ». Menu : Surveillance → Rackmap.
 
 ## Mise à niveau
+- 0.11 → 0.12 : `sql/upgrade-0.12.postgresql.sql` ou `sql/upgrade-0.12.mysql.sql` (colonnes `port_face`, `pp_media`, `a_face`, `b_face`, vues avant/arrière).
 - 0.9 → 0.10 : `sql/upgrade-0.10.postgresql.sql` ou `sql/upgrade-0.10.mysql.sql` (colonne `u_desc`, sens de numérotation des U).
 - 0.7 → 0.8 / 0.8 → 0.9 : `sql/upgrade-0.8.*.sql`, `sql/upgrade-0.9.*.sql` (SFP, demi-largeur, disques).
 - 0.5 → 0.6 : `sql/upgrade-0.6.postgresql.sql` ou `sql/upgrade-0.6.mysql.sql` (colonne `site`, datacenter).

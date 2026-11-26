@@ -72,7 +72,7 @@ class Store {
 			];
 		}
 
-		foreach (DBfetchArray(DBselect('SELECT deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.(self::hasCol('rackmap_device', 'sfp_ports') ? ',sfp_ports,sfp_speed' : '').(self::hasCol('rackmap_device', 'sfp_spec') ? ',sfp_spec' : '').(self::hasCol('rackmap_device', 'slot') ? ',slot' : '').(self::hasCol('rackmap_device', 'disks') ? ',disks,disk_orient' : '').' FROM rackmap_device ORDER BY u_pos')) as $d) {
+		foreach (DBfetchArray(DBselect('SELECT deviceid,rackid,name,type,hostid,u_pos,u_height,ports'.(self::hasCol('rackmap_device', 'sfp_ports') ? ',sfp_ports,sfp_speed' : '').(self::hasCol('rackmap_device', 'sfp_spec') ? ',sfp_spec' : '').(self::hasCol('rackmap_device', 'slot') ? ',slot' : '').(self::hasCol('rackmap_device', 'disks') ? ',disks,disk_orient' : '').(self::hasCol('rackmap_device', 'port_face') ? ',port_face,pp_media' : '').' FROM rackmap_device ORDER BY u_pos')) as $d) {
 			if (!isset($racks[(int) $d['rackid']])) {
 				continue;
 			}
@@ -82,11 +82,12 @@ class Store {
 				'u_pos' => (int) $d['u_pos'], 'u_height' => (int) $d['u_height'], 'ports' => (int) $d['ports'],
 				'sfp_groups' => self::parseSfp((string) ($d['sfp_spec'] ?? ''), (int) ($d['sfp_ports'] ?? 0), (int) ($d['sfp_speed'] ?? 10)),
 				'slot' => (int) ($d['slot'] ?? 0),
-				'disks' => (int) ($d['disks'] ?? -1), 'disk_orient' => (int) ($d['disk_orient'] ?? 0)
+				'disks' => (int) ($d['disks'] ?? -1), 'disk_orient' => (int) ($d['disk_orient'] ?? 0),
+				'port_face' => (int) ($d['port_face'] ?? 0), 'pp_media' => (int) ($d['pp_media'] ?? 0)
 			];
 		}
 
-		$ifc = self::hasIface() ? ',a_iface,b_iface' : '';
+		$ifc = (self::hasIface() ? ',a_iface,b_iface' : '').(self::hasCol('rackmap_link', 'a_face') ? ',a_face,b_face' : '');
 
 		foreach (DBfetchArray(DBselect('SELECT linkid,rackid,a_device,a_port,b_device,b_port,cable_type,color,label'.$ifc.' FROM rackmap_link')) as $l) {
 			if (!isset($racks[(int) $l['rackid']])) {
@@ -96,7 +97,8 @@ class Store {
 				'id' => (int) $l['linkid'], 'a' => (int) $l['a_device'], 'a_port' => $l['a_port'],
 				'b' => (int) $l['b_device'], 'b_port' => $l['b_port'],
 				'cable' => $l['cable_type'], 'color' => $l['color'], 'label' => $l['label'],
-				'a_iface' => $l['a_iface'] ?? '', 'b_iface' => $l['b_iface'] ?? ''
+				'a_iface' => $l['a_iface'] ?? '', 'b_iface' => $l['b_iface'] ?? '',
+				'a_face' => (int) ($l['a_face'] ?? 0), 'b_face' => (int) ($l['b_face'] ?? 0)
 			];
 		}
 
@@ -181,6 +183,10 @@ class Store {
 					$extra['disks'] = (string) max(-1, min(60, (int) ($d['disks'] ?? -1)));
 					$extra['disk_orient'] = (string) ((int) ($d['disk_orient'] ?? 0) === 1 ? 1 : 0);
 				}
+				if (self::hasCol('rackmap_device', 'port_face')) {
+					$extra['port_face'] = (string) ((int) ($d['port_face'] ?? 0) === 1 ? 1 : 0);
+					$extra['pp_media'] = (string) ((int) ($d['pp_media'] ?? 0) === 1 ? 1 : 0);
+				}
 				if (self::hasCol('rackmap_device', 'slot')) {
 					$extra['slot'] = (string) max(0, min(2, (int) ($d['slot'] ?? 0)));
 				}
@@ -241,6 +247,11 @@ class Store {
 					$cols .= ',a_iface,b_iface';
 					$vals .= ','.zbx_dbstr(mb_substr((string) ($l['a_iface'] ?? ''), 0, 64)).','.
 						zbx_dbstr(mb_substr((string) ($l['b_iface'] ?? ''), 0, 64));
+				}
+
+				if (self::hasCol('rackmap_link', 'a_face')) {
+					$cols .= ',a_face,b_face';
+					$vals .= ','.((int) ($l['a_face'] ?? 0) === 1 ? 1 : 0).','.((int) ($l['b_face'] ?? 0) === 1 ? 1 : 0);
 				}
 
 				DBexecute('INSERT INTO rackmap_link ('.$cols.') VALUES ('.$vals.')');
